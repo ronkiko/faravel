@@ -1,0 +1,323 @@
+#!/usr/bin/env php
+<?php // v0.3.46
+
+/**
+ * Консоль Faravel "Гефест".
+ * Команды:
+ *  - route:list               — показать маршруты
+ *  - migrate                  — применить миграции
+ *  - migrate:rollback [N]     — откатить последнюю пачку (или N)
+ *  - migrate:status           — показать Applied/Pending
+ *  - migrate:forget <file>    — удалить конкретную запись из таблицы migrations (без отката схемы)
+ *  - migrate:rerun <files...> [--up|--down] — повторно прогнать указанные миграции (down+up по умолчанию)
+ *  - db:seed                  — выполнить сиды
+ *  - make:migration <name>    — (STUB) показать имя файла и шаблон миграции, БЕЗ записи на диск
+ *  - sync:in                  — импорт событий (legacy sync)
+ *  - sync:out                 — экспорт событий (legacy sync)
+ */
+
+$app = require __DIR__ . '/bootstrap/app.php';
+
+use Faravel\Routing\Router;
+
+// ---------- аргументы ----------
+$args = $_SERVER['argv'];
+array_shift($args); // имя скрипта
+$command = $args[0] ?? null;
+
+switch ($command) {
+    case 'route:list': {
+        $routes = Router::getRoutes();
+        if (empty($routes)) { echo "No routes defined.\n"; break; }
+        foreach ($routes as $method => $list) {
+            foreach ($list as $route) {
+                /** @var Faravel\Routing\RouteDefinition $route */
+                $name = $route->name ?: '-';
+                $action = is_array($route->action)
+                    ? ($route->action[0] . '@' . $route->action[1])
+                    : (is_string($route->action) ? $route->action : 'closure');
+                $middleware = $route->middleware ? implode(',', $route->middleware) : '-';
+                printf("%-6s %-30s %-20s %-40s %s\n", $method, $route->uri, $name, $action, $middleware);
+            }
+        }
+        break;
+    }
+
+    case 'migrate': {
+        /** @var \Faravel\Database\Database $db */
+        $db = $app->make(\Faravel\Database\Database::class);
+        $runner = new \App\Console\Migrations\MigrationRunner($db, __DIR__ . '/database/migrations');
+        $runner->migrate();
+        break;
+    }
+
+    case 'migrate:rollback': {
+        $steps = isset($args[1]) ? (int)$args[1] : 1;
+        /** @var \Faravel\Database\Database $db */
+        $db = $app->make(\Faravel\Database\Database::class);
+        $runner = new \App\Console\Migrations\MigrationRunner($db, __DIR__ . '/database/migrations');
+        $runner->rollback($steps);
+        break;
+    }
+
+    case 'migrate:status': {
+        /** @var \Faravel\Database\Database $db */
+        $db = $app->make(\Faravel\Database\Database::class);
+        $runner = new \App\Console\Migrations\MigrationRunner($db, __DIR__ . '/database/migrations');
+        $runner->status();
+        break;
+    }
+
+    case 'migrate:forget': {
+        // Удаляет КОНКРЕТНУЮ запись из таблицы migrations (не откатывает схему и не трогает файлы).
+        // Использование:
+        //   php gefest migrate:forget 2025_08_15_000101_create_settings_table.php
+        $name = $args[1] ?? null;
+        if (!$name) {
+            fwrite(STDERR, "Usage: php gefest migrate:forget <migration_filename>\n");
+            exit(1);
+        }
+
+        /** @var \Faravel\Database\Database $db */
+        $db = $app->make(\Faravel\Database\Database::class);
+
+        // Проверим наличие таблицы
+        try {
+            $db->scalar("SELECT 1 FROM migrations LIMIT 1");
+        } catch (\Throwable $e) {
+            fwrite(STDERR, "[forget] migrations table not found. Run `php gefest migrate` first.\n");
+            exit(2);
+        }
+
+        // Попробуем разные названия колонки, не зная точного имени
+        $candidates = ['migration', 'name', 'filename', 'file'];
+        $matchedCol = null;
+        $count = 0;
+
+        foreach ($candidates as $col) {
+            try {
+                $count = (int)$db->scalar("SELECT COUNT(*) FROM migrations WHERE `{$col}` = ?", [$name]);
+                $matchedCol = $col;
+                break;
+            } catch (\Throwable $e) {}
+        }
+
+        if ($matchedCol === null) {
+            fwrite(STDERR, "[forget] cannot determine filename column in migrations table (tried: ".implode(',', $candidates).").\n");
+            exit(3);
+        }
+
+        if ($count === 0) {
+            echo "[forget] no entry for '{$name}' in migrations (column `{$matchedCol}`). Nothing to do.\n";
+            exit(0);
+        }
+
+        $db->statement("DELETE FROM migrations WHERE `{$matchedCol}` = ?", [$name]);
+        echo "[forget] removed {$count} entr".($count===1?'y':'ies')." for '{$name}' from migrations (column `{$matchedCol}`).\n";
+        echo "[hint] If the physical file also exists and should not run again, rename or delete it from database/migrations.\n";
+        break;
+    }
+
+    case 'migrate:rerun': {
+        // Повторный прогон указанных миграций: down -> (запись удалить) -> up -> (запись добавить).
+        // Использование:
+        //   php gefest migrate:rerun 2025_08_19_000500_create_perks_table.php 2025_08_19_000401_create_abilities_table.php
+        //   php gefest migrate:rerun 2025_08_19_000500_create_perks_table.php --down   # только down + forget
+        //   php gefest migrate:rerun 2025_08_19_000500_create_perks_table.php --up     # только up + запись в migrations
+        $mode = 'both'; // both | down | up
+        $names = [];
+        for ($i = 1; $i < count($args); $i++) {
+            $a = $args[$i];
+            if ($a === '--down') $mode = 'down';
+            elseif ($a === '--up') $mode = 'up';
+            else $names[] = $a;
+        }
+        if (empty($names)) {
+            fwrite(STDERR, "Usage: php gefest migrate:rerun <files...> [--up|--down]\n");
+            exit(1);
+        }
+
+        /** @var \Faravel\Database\Database $db */
+        $db = $app->make(\Faravel\Database\Database::class);
+        $migrationsPath = __DIR__ . '/database/migrations';
+
+        // helpers
+        $detectFilenameCol = function() use ($db): ?string {
+            $candidates = ['migration','name','filename','file'];
+            foreach ($candidates as $col) {
+                try {
+                    $db->scalar("SELECT COUNT(*) FROM migrations WHERE `{$col}` IS NOT NULL");
+                    return $col;
+                } catch (\Throwable $e) {}
+            }
+            return null;
+        };
+        $listColumns = function() use ($db): array {
+            try {
+                $rows = $db->select("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'migrations'");
+                return array_map(fn($r) => $r['COLUMN_NAME'] ?? $r['column_name'] ?? null, $rows);
+            } catch (\Throwable $e) {
+                return [];
+            }
+        };
+        $forgetRecord = function(string $filename) use ($db, $detectFilenameCol): void {
+            $col = $detectFilenameCol();
+            if (!$col) return;
+            try {
+                $db->statement("DELETE FROM migrations WHERE `{$col}` = ?", [$filename]);
+            } catch (\Throwable $e) {}
+        };
+        $insertRecord = function(string $filename) use ($db, $detectFilenameCol, $listColumns): void {
+            $col = $detectFilenameCol();
+            if (!$col) return;
+
+            $cols = $listColumns();
+            $hasBatch = in_array('batch', $cols, true);
+            $nowCol = null;
+            foreach (['ran_at','applied_at','created_at','executed_at'] as $c) {
+                if (in_array($c, $cols, true)) { $nowCol = $c; break; }
+            }
+
+            $params = [$filename];
+            $sqlCols = "`{$col}`";
+            $sqlVals = "?";
+
+            if ($hasBatch) {
+                $batch = (int)$db->scalar("SELECT COALESCE(MAX(batch),0)+1 FROM migrations");
+                $sqlCols .= ", `batch`";
+                $sqlVals .= ", ?";
+                $params[] = $batch;
+            }
+            if ($nowCol) {
+                $sqlCols .= ", `{$nowCol}`";
+                $sqlVals .= ", NOW()";
+            }
+
+            try {
+                $db->statement("INSERT INTO migrations ({$sqlCols}) VALUES ({$sqlVals})", $params);
+            } catch (\Throwable $e) {
+                // если запись уже есть — молча игнорируем
+            }
+        };
+
+        $ok = 0; $fail = 0;
+        foreach ($names as $name) {
+            $file = $migrationsPath . '/' . $name;
+            if (!is_file($file)) {
+                fwrite(STDERR, "[rerun] not found: {$name}\n");
+                $fail++; continue;
+            }
+
+            echo "[rerun] {$name} ({$mode}) ...\n";
+            try {
+                $mig = require $file;
+                if (!is_object($mig) || !method_exists($mig, 'up') || !method_exists($mig, 'down')) {
+                    throw new \RuntimeException("Migration file must return an object with up()/down()");
+                }
+
+                if ($mode === 'both' || $mode === 'down') {
+                    try { $mig->down(); } catch (\Throwable $e) { /* down может падать, продолжаем */ }
+                    $forgetRecord($name);
+                }
+
+                if ($mode === 'both' || $mode === 'up') {
+                    $mig->up();
+                    $insertRecord($name);
+                }
+
+                echo "[rerun] done: {$name}\n";
+                $ok++;
+            } catch (\Throwable $e) {
+                fwrite(STDERR, "[rerun] failed: {$name} — {$e->getMessage()}\n");
+                $fail++;
+            }
+        }
+        echo "[rerun] summary: ok={$ok}, fail={$fail}\n";
+        break;
+    }
+
+    case 'db:seed': {
+        /** @var \Faravel\Database\Database $db */
+        $db = $app->make(\Faravel\Database\Database::class);
+        require_once __DIR__ . '/database/seeders/Seeder.php';
+        require_once __DIR__ . '/database/seeders/DatabaseSeeder.php';
+        $seeder = new \Database\Seeders\DatabaseSeeder($db);
+        $seeder->run();
+
+        require_once __DIR__ . '/database/seeders/AbilitiesSeeder.php';
+        $seeder = new \Database\Seeders\AbilitiesSeeder($db);
+        $seeder->run();
+
+        require_once __DIR__ . '/database/seeders/PerksSeeder.php';
+        $seeder = new \Database\Seeders\PerksSeeder($db);
+        $seeder->run();
+
+        break;
+    }
+
+    case 'make:migration': {
+        // STUB-режим: ничего не создаём, только показываем, что было бы сделано
+        $name = $args[1] ?? null;
+        if (!$name) {
+            fwrite(STDERR, "Usage: php gefest make:migration <name_snake_case>\n");
+            exit(1);
+        }
+
+        $ts   = date('Y_m_d_His');
+        $file = "database/migrations/{$ts}_{$name}.php";
+
+        echo "[make:migration:STUB] would create: {$file}\n";
+        echo "[make:migration:STUB] template:\n";
+        echo "----------------------------------------\n";
+        echo <<<'PHP'
+<?php
+
+use Faravel\Support\Facades\DB;
+
+return new class {
+    public function up()
+    {
+        // Пример:
+        // DB::connection()->exec("ALTER TABLE users ADD timezone VARCHAR(40) NOT NULL DEFAULT 'UTC'");
+    }
+
+    public function down()
+    {
+        // Пример:
+        // DB::connection()->exec("ALTER TABLE users DROP COLUMN timezone");
+    }
+};
+
+PHP;
+        echo "----------------------------------------\n";
+        echo "NOTE: This is a stub. No file was written.\n";
+        break;
+    }
+
+    case 'sync:in': {
+        $manager = $app->make(App\Services\SyncManager::class);
+        $manager->run('inbound');
+        break;
+    }
+
+    case 'sync:out': {
+        $manager = $app->make(App\Services\SyncManager::class);
+        $manager->run('outgoing');
+        break;
+    }
+
+    default: {
+        echo "Available commands:\n";
+        echo "  route:list               Show all registered routes.\n";
+        echo "  migrate                  Run pending migrations.\n";
+        echo "  migrate:rollback [N]     Roll back last batch (or N batches).\n";
+        echo "  migrate:status           Show applied and pending migrations.\n";
+        echo "  migrate:forget <file>    Remove a specific entry from migrations table.\n";
+        echo "  migrate:rerun <files...> [--up|--down]  Re-run specific migrations (down+up by default).\n";
+        echo "  db:seed                  Seed database with initial data.\n";
+        echo "  make:migration <name>    (STUB) Show filename + template (no write).\n";
+        echo "  sync:in                  Process inbound sync (import events).\n";
+        echo "  sync:out                 Process outbound sync (export events).\n";
+        break;
+    }
+}

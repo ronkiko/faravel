@@ -1,0 +1,54 @@
+<?php # handlers/UserCreated.php
+
+$user = $decoded;
+
+if (!isset($user['id'], $user['name'], $user['password'], $user['registered'])) {
+    logMessage("PROCESS : Skipped invalid UserCreated missing fields at line $lineNumber", true);
+    return;
+}
+
+try {
+    $pdo = getPDO();
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE id = ?");
+    $stmt->execute([$user['id']]);
+
+    if ($stmt->fetchColumn() > 0) {
+        $cleanName = sanitize($user['name']);
+        logMessage("PROCESS : Skipped duplicate user {$cleanName}");
+        return;
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO users (
+            id, username, password, registered,
+            last_visit, last_post,
+            role, language, title, style, signature
+        )
+        VALUES (
+            :id, :username, :password, :registered,
+            :last_visit, :last_post,
+            :role, :language, :title, :style, :signature
+        )
+    ");
+
+    $stmt->execute([
+        ':id'         => $user['id'],
+        ':username'   => $user['name'],
+        ':password'   => $user['password'],
+        ':registered' => (int)$user['registered'],
+
+        ':last_visit' => $user['last_visit'] ?? null,
+        ':last_post'  => $user['last_post'] ?? null,
+
+        ':role'       => $user['role'] ?? 1,
+        ':language'   => $user['language'] ?? 1,
+        ':title'      => $user['title'] ?? 0,
+        ':style'      => $user['style'] ?? 0,
+        ':signature'  => $user['signature'] ?? null,
+    ]);
+
+    $cleanName = sanitize($user['name']);
+    logMessage("PROCESS : Imported user {$cleanName}");
+} catch (PDOException $e) {
+    logMessage("PROCESS : DB error — " . $e->getMessage(), true);
+}

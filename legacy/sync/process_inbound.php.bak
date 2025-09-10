@@ -1,0 +1,66 @@
+<?php # process_inbound.php
+
+require dirname(__DIR__) . '/include/config.php';
+require dirname(__DIR__) . '/include/db.php';
+require __DIR__ . '/functions.php';
+
+logMessage("PROCESS : Started process_inbound");
+
+$inboundDir = __DIR__ . '/inbound';
+
+if (!is_dir($inboundDir)) {
+    logMessage("PROCESS : Inbound directory not found: $inboundDir", true);
+    exit(1);
+}
+
+try {
+    foreach (scandir($inboundDir) as $day) {
+        if (!preg_match('/^\d+$/', $day)) continue;
+
+        $dayPath = "$inboundDir/$day";
+        if (!is_dir($dayPath)) continue;
+
+        foreach (scandir($dayPath) as $file) {
+            if (pathinfo($file, PATHINFO_EXTENSION) !== 'json') continue;
+
+            // Удаляем префикс (например, bob_) и расширение .json → получаем eventType
+            $eventType = preg_replace('/^[^_]+_/', '', basename($file, '.json'));
+            $fullPath = "$dayPath/$file";
+
+            logMessage("PROCESS : Reading $eventType from $day");
+
+            $handle = fopen($fullPath, 'r');
+            if (!$handle) {
+                logMessage("PROCESS : Failed to open $fullPath", true);
+                continue;
+            }
+
+            $lineNumber = 0;
+            while (($line = fgets($handle)) !== false) {
+                $lineNumber++;
+                $line = trim($line);
+                if ($line === '') continue;
+
+                $decoded = json_decode($line, true);
+                if (!is_array($decoded)) {
+                    logMessage("PROCESS : Invalid JSON in $file at line $lineNumber", true);
+                    continue;
+                }
+
+                switch ($eventType) {
+                    case 'UserCreated':
+                        require __DIR__ . '/handlers/UserCreated.php';
+                        break;
+
+                    default:
+                        logMessage("PROCESS : Unknown event type: $eventType", true);
+                        break;
+                }
+            }
+
+            fclose($handle);
+        }
+    }
+} catch (Throwable $e) {
+    logMessage("PROCESS : Fatal error — " . $e->getMessage(), true);
+}

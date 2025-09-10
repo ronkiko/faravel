@@ -1,0 +1,127 @@
+.login {
+    max-width: 400px;
+    margin: 0 auto;
+    padding: 5px 20px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    margin-top: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #e0e0e0;
+}
+
+/* Заголовок */
+.login .title {
+    font-size: 1.5rem;
+    text-align: center;
+    margin-bottom: 20px;
+    color: #333;
+    font-weight: 600;
+}
+
+/* Ошибки */
+.error-message {
+  background-color: #f8d7da;
+  color: #842029;
+  padding: 12px 16px;
+  border: 1px solid #f5c2c7;
+  border-radius: 4px;
+  margin-bottom: 1em;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+/* Скрывать, если нет содержимого */
+.error-message:empty {
+  display: none;
+}
+
+/* Форма */
+.login .form {
+    display: flex;
+    flex-direction: column;
+}
+
+.login .group {
+    margin-bottom: 20px;
+}
+
+.login .group label {
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 5px;
+    color: #333;
+}
+
+.login .group input {
+    padding: 10px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.login .group input:focus {
+    border-color: #3366cc;
+}
+
+/* Кнопка */
+.login .button {
+    background-color: #3366cc;
+    color: white;
+    padding: 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.login .button:hover {
+    background-color: #254a99;
+}
+
+/* Ссылка на регистрацию */
+.login .register-link {
+    text-align: center;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.login .register-link a {
+    color: #3366cc;
+    text-decoration: none;
+}
+
+.login .register-link a:hover {
+    text-decoration: underline;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+    .login {
+        margin-top: 7px;
+        margin-bottom: 7px;
+        padding: 7px;
+    }
+
+    .login .title {
+        font-size: 1.25rem;
+        margin-bottom: 15px;
+    }
+
+    .login .group {
+        margin-bottom: 15px;
+    }
+
+    .login .group input {
+        padding: 8px;
+        font-size: 0.9rem;
+    }
+
+    .login .button {
+        padding: 10px;
+        font-size: 0.9rem;
+    }
+}

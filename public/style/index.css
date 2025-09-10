@@ -1,0 +1,288 @@
+/* public/style/index.css */
+/* v0.4.10
+   Purpose: Banner flush with navbar (no gap), image-only banner, reliable sticky navbar,
+            mobile drawer (CSS-only), XenForo-like "tab" active state, centered logo & content.
+FIX:
+- Centered banner logo; removed divider (no gap).
+- Navbar active link = white "tab" (XF-like).
+- Centering helpers for title+form; NEW: .xen-form-actions row and
+  .xen-form-hint--inline to place hint next to the submit button on /register.
+- Kept mobile burger-left / login-right behavior.
+*/
+
+/* Tokens */
+:root{
+  --menubar-h:         44px;
+  --brandbar-h:        calc(var(--menubar-h) * 2);
+  --maxw:              1000px;
+
+  /* Colors */
+  --c-top:             #1976d2;
+  --c-top-2:           #1565c0;
+  --c-top-deep:        #0b4f8e;
+
+  --bg-page:           #f3f5f8;
+  --bg-surface:        #ffffff;
+  --text:              #1f2937;
+  --muted:             #6b7280;
+  --border:            #d9dee8;
+
+  /* Navbar */
+  --nav-grad:          linear-gradient(180deg, var(--c-top), var(--c-top-2));
+  --nav-grad-deep:     linear-gradient(180deg, var(--c-top-2), var(--c-top-deep));
+  --nav-text:          #fff;
+  --nav-hover:         rgba(255,255,255,.16);
+
+  /* Banner background (same family as logo backdrop) */
+  --brand-grad:        linear-gradient(90deg, #07253f 0%, #0b4f8e 48%, #0e3f70 100%);
+
+  /* Drawer */
+  --drawer-w:          320px;
+  --scrim:             rgba(0,0,0,.50);
+
+  /* Tabs (active link look) */
+  --tab-border:        rgba(0,0,0,.15);
+  --tab-shadow:        0 1px 2px rgba(0,0,0,.12);
+}
+
+/* Mobile: make banner height equal to navbar height */
+@media (max-width: 768px){
+  :root{ --brandbar-h: var(--menubar-h); }
+}
+
+/* Base */
+*,
+*::before,
+*::after{ box-sizing: border-box; }
+html{ -webkit-text-size-adjust: 100%; }
+body{
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Arial;
+  line-height: 1.5;
+}
+a{ color: #1259ad; text-decoration: none; }
+a:hover{ text-decoration: underline; } /* content area only */
+
+/* Header matches banner background and does not affect sticky navbar */
+.xen-header{
+  position: relative;
+  overflow: visible !important;
+  z-index: 1;
+  background: var(--brand-grad);
+  margin: 0; padding: 0; border: 0;
+}
+
+/* ===== BANNER (full-bleed, no gap, image-only) ===== */
+.xen-brandbar{
+  position: relative;
+  background: var(--brand-grad);
+  color: var(--nav-text);
+  border: 0; margin: 0; padding: 0;
+}
+/* Remove divider to avoid any visual "gap" */
+.xen-brandbar::after{ content: none; }
+
+.xen-brandbar__inner{
+  width: 100%; min-height: var(--brandbar-h);
+  margin: 0; padding: 0;
+  display: flex; align-items: center; justify-content: center; /* center logo */
+  overflow: hidden;           /* logo never forces overflow */
+  line-height: 0;             /* remove inline img baseline gap */
+}
+.xen-brand{
+  display: inline-flex; align-items: center; gap: 0;
+  margin: 0; padding: 0;
+}
+.xen-brand__logo{
+  height: var(--brandbar-h); width: auto; display: block;
+  object-fit: contain; object-position: center;
+  max-width: 100%;
+  margin: 0; padding: 0; border: 0;
+}
+.xen-brand__text{ display: none !important; } /* banner must be image-only */
+
+/* ===== NAVBAR (sticky) ===== */
+.xen-navbar{
+  position: -webkit-sticky;
+  position: sticky;
+  top: 0;
+  z-index: 3000;
+  background: var(--nav-grad-deep);
+  color: var(--nav-text);
+  border: 0; margin: 0; box-shadow: none; display: block;
+}
+.xen-menubar__inner{
+  min-height: var(--menubar-h);
+  max-width: var(--maxw); margin: 0 auto;
+  padding: 0 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+@media (max-width: 768px){
+  .xen-menubar__inner{ padding-left: 56px; } /* reserve space for burger on the left */
+}
+.xen-menubar__left, .xen-menubar__right{
+  display: flex; align-items: center; gap: 8px;
+}
+.xen-menubar__right{ margin-left: auto; }
+
+/* Nav links (desktop) */
+.xen-menubar__inner a{ color: #fff; padding: 10px 12px; border-radius: 8px; }
+.xen-menubar__inner a.xen-menubar__link{ position: relative; transition: background .15s ease, color .15s ease; }
+.xen-navbar a:hover{ text-decoration: none; }
+.xen-menubar__inner a.xen-menubar__link:hover{ background: var(--nav-hover); }
+
+/* Active "tab" (XenForo-like): white pill with dark text and subtle shadow */
+.xen-menubar__inner a.xen-menubar__link.is-active{
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid var(--tab-border);
+  box-shadow: var(--tab-shadow);
+}
+.xen-menubar__inner a.xen-menubar__link.is-active:hover{
+  background: #fff; /* keep solid look on hover */
+}
+
+/* Login button (still looks like a link, but slightly stronger) */
+.xen-btn--login{
+  padding: 10px 12px; border: 0; border-radius: 8px;
+  font-weight: 600; background: transparent; color: #fff;
+}
+.xen-btn--login:hover{ background: rgba(255,255,255,.14); text-decoration: none; }
+
+/* Focus states (keyboard) */
+.xen-navbar a:focus-visible, .xen-burger:focus-visible, .xen-drawer__close:focus-visible{
+  outline: 2px solid #fff; outline-offset: 2px;
+}
+
+/* ===== BURGER ===== */
+.xen-nav__checkbox{ position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); }
+.xen-burger{
+  display: none; width: 40px; height: 32px;
+  border-radius: 6px; border: 1px solid rgba(255,255,255,.25);
+  position: absolute; left: 6px; top: calc((var(--menubar-h) - 32px)/2);
+  cursor: pointer; background: transparent;
+}
+.xen-burger::before{
+  content: ""; position: absolute; left: 10px; right: 10px; top: 8px;
+  height: 2px; background: #fff; border-radius: 2px;
+  box-shadow: 0 8px 0 #fff, 0 16px 0 #fff; /* three lines */
+}
+@media (max-width: 768px){ .xen-burger{ display: block; } }
+
+/* ===== DRAWER ===== */
+.xen-drawer{
+  position: fixed; inset: 0 auto 0 0;
+  width: var(--drawer-w);
+  transform: translateX(-105%);
+  transition: transform .30s cubic-bezier(.2,.6,.2,1);
+  background: var(--nav-grad-deep); color: #fff;
+  box-shadow: 6px 0 16px rgba(0,0,0,.35);
+  z-index: 4000; display: flex; flex-direction: column; overflow-y: auto;
+}
+@media (max-width: 768px){ .xen-drawer{ width: 100vw; } }
+
+/* Force drawer & scrim closed on desktop even if checkbox stayed checked */
+@media (min-width: 769px){
+  .xen-drawer{ transform: translateX(-105%) !important; }
+  .xen-scrim{ opacity: 0 !important; pointer-events: none !important; }
+}
+
+.xen-drawer__header{
+  min-height: var(--menubar-h);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px; font-weight: 600;
+  background: #0b4f8e; border-bottom: 1px solid rgba(255,255,255,.25);
+}
+.xen-drawer__title{ font-size: 14px; letter-spacing: .2px; }
+.xen-drawer__close{
+  cursor: pointer; width: 28px; height: 24px; display: inline-grid; place-items: center;
+  border-radius: 4px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.35);
+}
+.xen-drawer__close:hover{ background: rgba(255,255,255,.20); }
+
+/* Drawer sections: full-row hover/tap feedback */
+.xen-drawer__section{ padding: 0; display: grid; gap: 0; }
+.xen-drawer__section a{
+  display: block; padding: 9px 14px; color: #fff; border-radius: 0;
+  background: transparent; border-bottom: 1px solid rgba(255,255,255,.18);
+  transition: background .12s ease;
+  -webkit-tap-highlight-color: rgba(255,255,255,.25);
+  touch-action: manipulation;
+}
+.xen-drawer__section a:hover,
+.xen-drawer__section a:active,
+.xen-drawer__section a:focus,
+.xen-drawer__section a:focus-visible{
+  background: rgba(255,255,255,.18); text-decoration: none;
+}
+/* Extra feedback on devices without hover */
+@media (hover: none){
+  .xen-drawer__section a:active,
+  .xen-drawer__section a:focus{
+    background: rgba(255,255,255,.26);
+  }
+}
+.xen-drawer__user{ padding: 10px 14px; font-weight: 600; }
+
+/* Scrim */
+.xen-scrim{
+  position: fixed; inset: 0; background: var(--scrim);
+  opacity: 0; pointer-events: none; transition: opacity .25s ease; z-index: 3500;
+}
+
+/* Toggle */
+.xen-nav__checkbox:checked ~ .xen-drawer{ transform: translateX(0); }
+.xen-nav__checkbox:checked ~ .xen-scrim{ opacity: 1; pointer-events: auto; }
+
+/* ===== MAIN content (centered column) ===== */
+.xen-main{
+  max-width: var(--maxw);
+  margin: 18px auto;
+  padding: 0 12px 32px;
+}
+/* Wrap to center a page title and a narrow form together */
+.xen-card-wrap{
+  max-width: 520px;
+  margin: 0 auto;
+}
+/* small helper for hints below/near forms */
+.xen-form-hint{
+  margin-top: 8px; font-size: 13px; color: var(--muted);
+}
+.xen-form-hint a{ color: #1259ad; text-decoration: underline; }
+/* NEW: row with button + inline hint (for /register) */
+.xen-form-actions{
+  display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap;
+}
+.xen-form-hint--inline{
+  margin-top: 0; font-size: 13px; color: var(--muted);
+}
+
+/* Buttons for forms */
+.xen-btn{ display:inline-block; padding:10px 12px; border-radius:8px; border:0; cursor:pointer; }
+.xen-btn--primary{ background:#1565c0; color:#fff; }
+.xen-btn--primary:hover{ background:#0b4f8e; }
+
+/* Topic list sample styling */
+.xen-main ul{ list-style: none; margin: 0; padding: 0; }
+.xen-main li{
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-left: 4px solid var(--c-top); border-radius: 10px; margin: 10px 0; padding: 14px 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06); display: flex; align-items: baseline; gap: 8px;
+}
+.xen-main li:hover{ border-color: var(--c-top-2); box-shadow: 0 10px 24px rgba(0,0,0,.12); }
+.xen-main li a{ font-weight: 600; color: #1259ad; }
+.xen-main li a:hover{ color: #0b4f8e; text-decoration: underline; }
+
+/* Footer */
+.xen-footer{ margin-top: 24px; background: #0f3f7a; color: #fff; }
+.xen-footer__inner{ max-width: var(--maxw); margin: 0 auto; padding: 14px 12px; font-size: 14px; opacity: .95; }
+
+/* ===== Responsive: left menu hidden on mobile; login stays visible on right ===== */
+@media (max-width: 768px){
+  .xen-menubar__left{ visibility: hidden; pointer-events: none; position: absolute; left: -9999px; }
+  .xen-menubar__right .xen-user{ display: none; }
+  .xen-menubar__right a:not(.xen-btn--login){ display: none; }
+}
