@@ -1,0 +1,62 @@
+a:2:{s:1:"e";i:1756469295;s:1:"v";s:4504:"
+
+<nav class="xen-navbar">
+  
+  <input id="xnav" class="xen-nav__checkbox" type="checkbox" aria-label="Открыть меню">
+  
+  <label class="xen-burger" for="xnav" aria-hidden="true"></label>
+  
+  <div class="xen-menubar__inner">
+    <div class="xen-menubar__left">
+      <a class="xen-menubar__link <?php if ($layout['nav']['active']==='home') { ?> is-active <?php } ?>"
+         href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['home'])) ? '' : ($layout['nav']['links']['home'])), ENT_QUOTES, 'UTF-8') ?>"
+         <?php if ($layout['nav']['active']==='home') { ?> aria-current="page" <?php } ?>>Главная</a>
+      <a class="xen-menubar__link <?php if ($layout['nav']['active']==='forum') { ?> is-active <?php } ?>"
+         href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['forum'])) ? '' : ($layout['nav']['links']['forum'])), ENT_QUOTES, 'UTF-8') ?>"
+         <?php if ($layout['nav']['active']==='forum') { ?> aria-current="page" <?php } ?>>Форум</a>
+      <?php if ($layout['nav']['auth']['is_admin']) { ?>
+        <a class="xen-menubar__link <?php if ($layout['nav']['active']==='admin') { ?> is-active <?php } ?>"
+           href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['admin'])) ? '' : ($layout['nav']['links']['admin'])), ENT_QUOTES, 'UTF-8') ?>"
+           <?php if ($layout['nav']['active']==='admin') { ?> aria-current="page" <?php } ?>>Админ</a>
+      <?php } ?>
+    </div>
+    <div class="xen-menubar__right">
+      <?php if ($layout['nav']['auth']['is_auth']) { ?>
+        <span class="xen-user"><?= htmlspecialchars((string)(is_array(($layout['nav']['auth']['username'])) ? '' : ($layout['nav']['auth']['username'])), ENT_QUOTES, 'UTF-8') ?></span>
+        <a class="xen-menubar__link" href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['profile'])) ? '' : ($layout['nav']['links']['profile'])), ENT_QUOTES, 'UTF-8') ?>">Профиль</a>
+        <a class="xen-menubar__link" href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['logout'])) ? '' : ($layout['nav']['links']['logout'])), ENT_QUOTES, 'UTF-8') ?>">Выйти</a>
+      <?php } else { ?>
+        <a class="xen-btn--login" href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['login'])) ? '' : ($layout['nav']['links']['login'])), ENT_QUOTES, 'UTF-8') ?>">Войти</a>
+      <?php } ?>
+    </div>
+  </div>
+  
+  <aside class="xen-drawer">
+    <div class="xen-drawer__header">
+      <span>Menu</span>
+      <label class="xen-drawer__close" for="xnav" aria-label="Закрыть">×</label>
+    </div>
+    <div class="xen-drawer__section">
+      <a class="<?php if ($layout['nav']['active']==='home') { ?> is-active <?php } ?>"
+         href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['home'])) ? '' : ($layout['nav']['links']['home'])), ENT_QUOTES, 'UTF-8') ?>">Главная</a>
+      <a class="<?php if ($layout['nav']['active']==='forum') { ?> is-active <?php } ?>"
+         href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['forum'])) ? '' : ($layout['nav']['links']['forum'])), ENT_QUOTES, 'UTF-8') ?>">Форум</a>
+      <?php if ($layout['nav']['auth']['is_admin']) { ?>
+        <a class="<?php if ($layout['nav']['active']==='admin') { ?> is-active <?php } ?>"
+           href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['admin'])) ? '' : ($layout['nav']['links']['admin'])), ENT_QUOTES, 'UTF-8') ?>">Админ</a>
+      <?php } ?>
+    </div>
+    <div class="xen-drawer__section">
+      <?php if ($layout['nav']['auth']['is_auth']) { ?>
+        <div class="xen-drawer__user"><?= htmlspecialchars((string)(is_array(($layout['nav']['auth']['username'])) ? '' : ($layout['nav']['auth']['username'])), ENT_QUOTES, 'UTF-8') ?></div>
+        <a href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['profile'])) ? '' : ($layout['nav']['links']['profile'])), ENT_QUOTES, 'UTF-8') ?>">Профиль</a>
+        <a href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['logout'])) ? '' : ($layout['nav']['links']['logout'])), ENT_QUOTES, 'UTF-8') ?>">Выйти</a>
+      <?php } else { ?>
+        <a href="<?= htmlspecialchars((string)(is_array(($layout['nav']['links']['login'])) ? '' : ($layout['nav']['links']['login'])), ENT_QUOTES, 'UTF-8') ?>">Войти</a>
+      <?php } ?>
+    </div>
+  </aside>
+  
+  <label class="xen-scrim" for="xnav" aria-hidden="true"></label>
+</nav>
+";}

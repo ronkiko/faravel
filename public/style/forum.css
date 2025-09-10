@@ -1,0 +1,173 @@
+/* forum.css — минималистичный стиль форума (вдохновение: Википедия)
+   Подключать ПОВЕРХ index.css на всех страницах форума.
+   Версия: v0.1.0
+*/
+
+/* Палитра и базовые токены */
+:root{
+  --f-fg: #1f2937;
+  --f-fg-soft: #374151;
+  --f-muted: #6b7280;
+  --f-link: #2066cc;
+  --f-link-visited: #5a32a3;
+  --f-border: #e5e7eb;
+  --f-border-soft: #f3f4f6;
+  --f-bg: #ffffff;
+  --f-bg-soft: #fafafa;
+  --f-accent: #0ea5e9;
+}
+
+/* Типографика и отступы — компактные */
+.f-title{
+  margin: .2rem 0 .6rem;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--f-fg);
+}
+.muted{ color: var(--f-muted); }
+
+/* Хлебные крошки */
+.f-breadcrumb{
+  display:flex; align-items:center; flex-wrap:wrap; gap:6px;
+  font-size:.95rem; margin:.2rem 0 .4rem;
+}
+.f-breadcrumb a{ color: var(--f-link); text-decoration:none; }
+.f-breadcrumb a:hover{ text-decoration:underline; }
+.f-breadcrumb .sep{ opacity:.5; }
+
+/* Кнопки — маленькие, без лишнего паффинга */
+.f-actions{ display:flex; flex-wrap:wrap; gap:6px; }
+.f-btn{
+  display:inline-block;
+  padding:.35rem .6rem;
+  border:1px solid var(--f-border);
+  border-radius:6px;
+  background: var(--f-bg);
+  color: var(--f-fg);
+  font-weight:600; font-size:.95rem; line-height:1;
+  text-decoration:none; cursor:pointer;
+}
+.f-btn:hover{ background:var(--f-bg-soft); }
+.f-btn--primary{
+  border-color:#c7e1fb;
+  background:#e9f3ff;
+  color:#0b4ca6;
+}
+.f-btn--primary:hover{
+  background:#dcebff;
+}
+
+/* Ссылки по тексту */
+.f-link{ color:var(--f-link); text-decoration:underline; text-underline-offset:2px; }
+.f-link:hover{ text-decoration:underline; }
+.f-link:visited{ color:var(--f-link-visited); }
+.f-link--muted{ color:var(--f-muted); text-decoration:none; }
+.f-link--muted:hover{ text-decoration:underline; }
+
+/* Информационные блоки */
+.f-note{
+  background: var(--f-bg-soft);
+  border:1px solid var(--f-border);
+  border-radius:8px;
+  padding:8px 10px;
+  margin:.4rem 0 .8rem;
+  color: var(--f-fg-soft);
+}
+.f-card{
+  background: var(--f-bg);
+  border:1px solid var(--f-border);
+  border-radius:8px;
+  padding:10px 12px;
+}
+.f-alert{
+  border:1px solid var(--f-border); border-left-width:4px;
+  padding:10px 12px; border-radius:6px; background:#fff; color:#111;
+  margin:.5rem 0;
+}
+.f-alert--error{ border-left-color:#dc2626; background:#fff5f5; color:#7f1d1d; }
+.f-alert--info { border-left-color:#0ea5e9; background:#f0faff; color:#0c4a6e; }
+
+/* Таблица — компактная, без лишней декорации */
+.f-table-wrap{ width:100%; overflow-x:auto; }
+.f-table{
+  width:100%;
+  border-collapse: collapse;
+  font-size:.95rem;
+}
+.f-table thead th{
+  text-align:left; font-weight:700; color:#111;
+  padding:8px; border-bottom:1px solid var(--f-border);
+  background:#fff;
+}
+.f-table tbody td{
+  padding:7px 8px;
+  border-top:1px solid var(--f-border);
+  vertical-align:top;
+}
+.ta-right{ text-align:right; }
+
+/* На очень узких экранах таблицу не «ломаем», а даём скролл */
+@media (max-width: 560px){
+  .f-table thead th{ white-space:nowrap; }
+}
+
+/* Бейджи-счётчики — не кричащие */
+.f-badge{
+  display:inline-block;
+  padding:2px 6px;
+  border:1px solid var(--f-border);
+  border-radius:999px;
+  font-size:.85rem; line-height:1.2;
+  color:#111; background:#f8fafc;
+}
+
+/* Шапка страницы */
+.f-header{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:8px; margin:.2rem 0 .6rem;
+}
+
+/* Список постов темы */
+.f-posts{ display:flex; flex-direction:column; gap:8px; margin:.6rem 0; }
+.f-post{
+  border:1px solid var(--f-border);
+  border-radius:8px;
+  background:#fff;
+}
+.f-post__head{
+  display:flex; align-items:center; gap:8px;
+  justify-content:flex-start;
+  padding:6px 10px;
+  border-bottom:1px solid var(--f-border);
+  background:#fff;
+  font-size:.9rem;
+}
+.f-post__head .muted{ color:var(--f-muted); }
+.f-post__head time{ margin-left:auto; color:var(--f-muted); }
+.f-post__body{
+  padding:10px 12px; line-height:1.5; color:var(--f-fg);
+  white-space:pre-wrap; word-wrap:break-word;
+}
+
+/* Формы */
+.f-form{ margin:.8rem 0; }
+.f-label{
+  display:block; font-weight:600; margin-bottom:4px; color:#111; font-size:.95rem;
+}
+.f-input{
+  width:100%; border:1px solid var(--f-border); border-radius:6px;
+  padding:8px 10px; font-size:1rem; background:#fff; color:#111;
+}
+.f-input:focus{ outline:none; border-color:#93c5fd; box-shadow:0 0 0 2px rgba(147,197,253,.3); }
+.f-input--area{ min-height:120px; resize:vertical; }
+
+/* Адаптация */
+@media (max-width: 860px){
+  .f-title{ font-size:1.25rem; }
+}
+@media (max-width: 520px){
+  .f-actions{ gap:5px; }
+  .f-btn{ padding:.32rem .5rem; font-size:.9rem; }
+  .f-post__body{ padding:9px 10px; }
+}

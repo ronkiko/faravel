@@ -1,0 +1,26 @@
+---
+database:
+  DB_HOST: forum_db_node1
+  DB_USER: user
+  DB_PASS: 'u9uy8fDF%tr1@df'
+  DB_NAME: forum
+paths:
+  WWW_ROOT: /var/www
+  HTML_ROOT: /var/www/html
+sync:
+  SYNC_API_KEY: secretkey
+  SYNC_SELF: alice
+  SYNC_DAYS_BACK: "3"
+  SYNC_EVENT_TYPES:
+    - UserCreated
+  SYNC_LOG_DIR: ../sync/log
+  SYNC_LOG_FILE: ../sync/log/sync.log
+  SYNC_ERROR_FILE: ../sync/log/sync_errors.log
+  SYNC_DEBUG: 'false'
+  SYNC_PEERS:
+    bob:
+      url: http://172.17.0.1:8082
+      salt: bobSecretSalt123
+    alice:
+      url: http://172.17.0.1:8081
+      salt: aliceSecretSalt123

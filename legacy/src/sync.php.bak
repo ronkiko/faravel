@@ -1,0 +1,132 @@
+<?php # sync.php
+require __DIR__ . '/bootstrap.php';
+
+if (!defined('SYNC_API_KEY') || !defined('SYNC_SELF') || !defined('SYNC_SELF_SALT') || !is_array(SYNC_PEERS)) {
+    http_response_code(500); echo json_encode(['error' => 'Sync config incomplete']); exit;
+}
+
+// ФАЗА 1: авторизация по GET-запросу
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $peer = $_GET['peer'] ?? '';
+    $sig  = $_GET['sig']  ?? '';
+
+    if (!preg_match('/^[a-z0-9_]{2,64}$/i', $peer)) {
+        http_response_code(400); echo json_encode(['error' => 'Invalid peer name']); exit;
+    }
+    if (!preg_match('/^[a-f0-9]{64}$/', $sig)) {
+        http_response_code(400); echo json_encode(['error' => 'Invalid signature format']); exit;
+    }
+    if (!isset(SYNC_PEERS[$peer]['salt'])) {
+        http_response_code(403); echo json_encode(['error' => 'Unknown peer']); exit;
+    }
+
+    $peer_salt  = SYNC_PEERS[$peer]['salt'];
+    $local_salt = SYNC_SELF_SALT;
+    $expected_sig = hash_hmac('sha256', "peer=$peer", SYNC_API_KEY . $peer_salt . $local_salt);
+
+    if (!hash_equals($expected_sig, $sig)) {
+        http_response_code(403); echo json_encode(['error' => 'Invalid signature']); exit;
+    }
+
+    header('Content-Type: application/x-ndjson');
+    echo json_encode(['status' => 'authorized']) . "\n";
+    flush();
+    exit;
+}
+
+// ФАЗА 2 и 3: POST-запрос с зашифрованным JSON
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $input = file_get_contents('php://input');
+    $payload = json_decode($input, true);
+
+    if (!is_array($payload) || !isset($payload['peer'], $payload['data'])) {
+        http_response_code(400); echo json_encode(['error' => 'Invalid payload']); exit;
+    }
+
+    $peer = $payload['peer'];
+    if (!isset(SYNC_PEERS[$peer]['salt'])) {
+        http_response_code(403); echo json_encode(['error' => 'Unknown peer']); exit;
+    }
+
+    $peer_salt  = SYNC_PEERS[$peer]['salt'];
+    $local_salt = SYNC_SELF_SALT;
+    $key        = hash('sha256', SYNC_API_KEY . $peer_salt . $local_salt, true);
+
+    $raw = base64_decode($payload['data'], true);
+    if (!is_string($raw) || strlen($raw) < 17) {
+        echo json_encode(['error' => 'Malformed encrypted payload']) . "\n";
+        exit;
+    }
+
+    $iv  = substr($raw, 0, 16);
+    $ct  = substr($raw, 16);
+    $json = openssl_decrypt($ct, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+
+    if (!is_string($json)) {
+        echo json_encode(['error' => 'Decryption failed']) . "\n";
+        exit;
+    }
+
+    $query = json_decode($json, true);
+    if (!is_array($query) || !isset($query['type'], $query['day'])) {
+        echo json_encode(['error' => 'Malformed decrypted payload']) . "\n";
+        exit;
+    }
+
+    $type = $query['type'];
+    $day  = (int)$query['day'];
+
+    $allowedTypes = ['UserCreated'];
+    if (!in_array($type, $allowedTypes, true)) {
+        echo json_encode(['error' => 'Unsupported event type']) . "\n";
+        exit;
+    }
+
+    $currentDay = floor(time() / 86400);
+    if ($day > $currentDay + 1) {
+        echo json_encode(['error' => 'Day out of range']) . "\n";
+        exit;
+    }
+
+    $pdo = getPDO();
+    $start = $day * 86400;
+    $end   = $start + 86400;
+
+    $stmt = $pdo->prepare("
+        SELECT data FROM events
+        WHERE type = :type AND created >= :start AND created < :end
+        ORDER BY created ASC
+    ");
+    $stmt->execute([
+        ':type'  => $type,
+        ':start' => $start,
+        ':end'   => $end
+    ]);
+    $events = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    if (empty($events)) {
+        echo json_encode(['status' => 'no_data']) . "\n";
+        echo json_encode(['status' => 'disconnected']) . "\n";
+        exit;
+    }
+
+    echo json_encode(['status' => 'sending']) . "\n";
+    flush();
+
+    // === ИСПРАВЛЕНО: порядок ключа теперь peer_salt + local_salt ===
+    $response_key = hash('sha256', SYNC_API_KEY . $peer_salt . $local_salt, true);
+
+    foreach ($events as $row) {
+        $iv = random_bytes(16);
+        $enc = openssl_encrypt($row, 'AES-256-CBC', $response_key, OPENSSL_RAW_DATA, $iv);
+        echo base64_encode($iv . $enc) . "\n";
+        flush();
+    }
+
+    echo json_encode(['status' => 'disconnected']) . "\n";
+    exit;
+}
+
+http_response_code(405);
+echo json_encode(['error' => 'Unsupported method']);
+exit;
