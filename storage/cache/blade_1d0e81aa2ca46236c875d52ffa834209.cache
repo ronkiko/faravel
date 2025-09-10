@@ -1,7 +1,0 @@
-a:2:{s:1:"e";i:1756467812;s:1:"v";s:488:"<?php $__parent_view = 'layouts.xen.theme'; ?>
-<?php $__section_stack[] = 'title'; ob_start(); ?>
-  <?= htmlspecialchars((string)(is_array(($vm['title'])) ? '' : ($vm['title'])), ENT_QUOTES, 'UTF-8') ?>
-<?php $__sec = array_pop($__section_stack) ?? null; if ($__sec!==null) { $__sections[$__sec] = ob_get_clean(); } ?>
-<?php $__section_stack[] = 'content'; ob_start(); ?>
-<?php $__sec = array_pop($__section_stack) ?? null; if ($__sec!==null) { $__sections[$__sec] = ob_get_clean(); } ?>
-";}
