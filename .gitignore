@@ -1,3 +1,9 @@
-
-# local env
-.env
+/vendor/
+/node_modules/
+/storage/*
+!/storage/.gitkeep
+/.env
+/.env.*
+/db_data/
+/.idea/
+/.vscode/
