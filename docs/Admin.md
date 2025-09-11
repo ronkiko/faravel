@@ -1,71 +1,122 @@
+
+---
+
+```md
+# docs/Admin.md
+
 # SafeMode Admin — единая аварийная админ-панель
 
-Админка объединяет вспомогательные режимы (проверки БД, инсталлятор и т. д.) под **одной дверью**:
-`/admin/`. Доступ — по ключу из окружения, авторизация запоминается в сессии.
+Админка объединяет вспомогательные режимы (проверки БД, инсталлятор) под **одной дверью**: `/admin/`.
+Доступ — по ключу из окружения, авторизация запоминается в сессии.
 
-## Доступ и безопасность
+## Доступ и авторизация
 
-- URL: `/admin/`
-- Ключ проверяется один раз и хранится в сессии (флаг входа).
-- Ключи: приоритетно используется `SERVICEMODE_KEY`, если не задан — берётся `ADMIN_KEY`.
-- Рекомендуется ограничить `/admin/` на уровне веб-сервера (BasicAuth, allow/deny по IP).
+- Точка входа: `public/admin/index.php`.
+- Ключ проверяется **один раз** за сессию и сохраняется в `$_SESSION`.
+- Переменные окружения:
+  - `SERVICEMODE_KEY` — приоритетный ключ;
+  - `ADMIN_KEY` — используется, если первый не задан.
 
-Пример для Nginx:
+> Если не задан **ни один** ключ — вход запрещён.
 
-location /admin/ {
-try_files $uri $uri/ /admin/index.php?$query_string;
-# auth_basic "Restricted"; # опционально
-# auth_basic_user_file /etc/nginx/.htpasswd; # опционально
-# allow 192.168.0.0/16; deny all; # опционально
-}
+## Архитектура
 
-## Архитектура и файлы
+- `public/admin/index.php` — единственная дверь: проверка ключа → роутинг модулей.
+- Подключаемые модули начинаются с подчёркивания и защищены константой `ADMIN_ENTRY`:
+  - `_service.php` — «Проверки БД»
+  - `_install.php` — «Инсталлятор»
+- Общий UI/хелперы: `_helpers.php` (сессии, layout, алерты).
 
-- `public/admin/index.php` — **единая точка входа** (проверка ключа → сессия → роутинг модулей).
-- `public/admin/_helpers.php` — общие хелперы админки (сессия, layout, алерты, **фабрика DBA**).
-- `public/admin/_home.php` — приветственная панель.
-- `public/admin/_service.php` — модуль «Проверки БД».
-- `public/admin/_install.php` — модуль «Инсталлятор».
+### Сервисы
 
-Все **подключаемые модули** начинаются с подчёркивания и **защищены** от прямого доступа:
-в начале файла они проверяют наличие константы `ADMIN_ENTRY`, которую объявляет только
-`/admin/index.php`. Таким образом, модули доступны **только** через админку.
-
-### Фабрика DatabaseAdmin
-
-`_helpers.php` содержит `admin_make_database_admin($cfg)`, которая безопасно создаёт
-`\Faravel\Database\DatabaseAdmin` (даже если у класса **нет конструктора**) и по возможности
-передаёт конфигурацию через методы `configure|setConfig|withConfig`.
+- Работа с БД централизована в `Faravel\Database\DatabaseAdmin` (статические методы):
+  - `pingServer($cfg)`, `databaseExists($cfg)`, `createDatabaseIfNotExists($cfg)`,
+    `dropDatabase($cfg)`, `canConnect($cfg)`, `testReport($cfg)`.
+- Миграции/сиды: `framework/migrator.php` экспортирует `faravel_migrate_all()` и
+  `faravel_seed_all()`; CLI-обёртка — `tools/migrate.php`.
 
 ## Модули
 
 ### Проверки БД (`page=service`)
-- Диагностика: `ping`, `canConnect`, отчёт `testReport()`
-- Работа с БД: `exists`, `create`, `drop` (требуют явного подтверждения)
-- Конфиг БД подхватывается из ENV (`DB_*`), можно править в форме
+- **Диагностика**: ping сервера, отчёт `testReport()`.
+- **Операции**: exists, create, drop, connect (create/drop требуют подтверждения).
+- Конфигурация подтягивается из ENV (`DB_*`) и редактируется в форме.
 
 ### Инсталлятор (`page=install`)
-- Проверка подключения, `create/drop`.
-- Миграции/Сиды через `framework/migrator.php`:
-  - **Migrate**, **Seed**, и **Fresh** (drop+create+мiгр.+сиды — «Fresh» выполняется из админки).
-- Управление `installed.lock`:
-  - Создание файла (блокирует повторные установки)
-  - Удаление файла (с отдельным подтверждением)
+- connect/create/drop (через `DatabaseAdmin`).
+- миграции/сиды (через `framework/migrator.php`): **Migrate**, **Seed**, **Fresh**.
+- `public/installed.lock`:
+  - **создание** — блокирует повторный запуск инсталлятора;
+  - **удаление** — доступно только с явным подтверждением.
 
-## CLI-режим (новое)
+---
 
-Для CI/Docker есть обёртка:
+## Безопасность (обязательно к исполнению)
+
+### Чек-лист
+
+1. **Задайте ключ**: `SERVICEMODE_KEY` (рекомендуется) или `ADMIN_KEY` в `.env`/секретах.
+2. **Ограничьте доступ к `/admin/`** на уровне веб-сервера:
+   - BasicAuth **и/или** allow/deny по IP.
+3. **Поставьте `public/installed.lock`** после развёртывания (кнопкой в инсталляторе).
+4. **Права на файлы**:
+   - `.env` — `640`, владелец — пользователь PHP;
+   - `storage/` и `bootstrap/cache/` — на запись процессом PHP;
+   - запретите листинг директорий.
+5. **Никогда** не коммитьте ключи/пароли в git.
+6. **Ротация ключа**: смените `SERVICEMODE_KEY`, завершите сессию (кнопка «Выйти»).
+
+### Примеры конфигурации
+
+**Nginx**
+location /admin/ {
+try_files $uri $uri/ /admin/index.php?$query_string;
+
+# Рекомендуется включить хотя бы один из вариантов ниже:
+# auth_basic "Restricted";
+# auth_basic_user_file /etc/nginx/.htpasswd;
+
+# Или фильтрация по IP (пример):
+# allow 192.168.0.0/16;
+# allow 127.0.0.1;
+# deny all;
+
+
+}
+
+
+**Apache (пример)**
+
+
+<Directory "/var/www/project/public/admin">
+AllowOverride All
+Require ip 127.0.0.1 192.168.0.0/16
+# Или BasicAuth:
+# AuthType Basic
+# AuthName "Restricted"
+# AuthUserFile /etc/apache2/.htpasswd
+# Require valid-user
+</Directory>
+
+
+---
+
+## CLI-миграции
+
+
 
 php tools/migrate.php --migrate [--json]
 php tools/migrate.php --seed [--json]
 php tools/migrate.php --fresh [--json]
 
-- `--json` включает **машинный вывод** (JSON) и глушит «болтливый» stdout мигратора.
-- Коды возврата: `0` — успех, `1` — ошибка.
-- «Fresh» в CLI = migrate + seed (DROP/CREATE БД — через админку или ваш DBA-инструмент).
 
-## Советы
+Флаг `--json` глушит «болтливый» вывод и печатает структурированный JSON (удобно для CI).  
+Код возврата: `0` — успех, `1` — ошибка.
 
-- Держите ключи (`SERVICEMODE_KEY` / `ADMIN_KEY`) в `.env`/секретах и не коммитьте их.
-- На проде прикрывайте `/admin/` базовой аутентификацией или по IP.
-- `installed.lock` хранится в `public/`. Его наличие скрывает опасные операции в UI инсталлятора.
+---
+
+## Траблшутинг
+
+- «Доступ запрещён»: проверьте `SERVICEMODE_KEY/ADMIN_KEY` и ограничения веб-сервера.
+- «Миграционный раннер не найден»: убедитесь, что `framework/migrator.php` на месте.
+- Проблемы с БД: используйте «Диагностический отчёт» и проверьте `DB_*` в ENV.
