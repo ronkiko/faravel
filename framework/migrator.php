@@ -1,34 +1,29 @@
-<?php // v0.4.1
+<?php // v0.4.2
 /* framework/migrator.php
 Purpose: Единый раннер миграций и сидов для SafeMode-админки и CLI. Выполняет лёгкий
          бутстрап (контейнер + фасады), затем прогоняет database/migrations и seeders.
-FIX: Начальная реализация: функции faravel_migrate_all() и faravel_seed_all(), без
-     загрузки маршрутов/boot. Поддержка анонимных классов миграций (return new class {up}).
+FIX: Подключён автозагрузчик приложения (app/init.php), чтобы классы App\Providers\*
+     и Database\Seeders\* были видны. Добавлен префлайт на биндинг 'db' и fallback-require
+     сидеров на случай кастомной структуры.
 */
 
 declare(strict_types=1);
 
 use Faravel\Foundation\Application;
 use Faravel\Support\Facades\Facade;
-use Faravel\Database\Database;
 
 /**
- * Выполняет лёгкий бутстрап контейнера и фасадов для задач БД.
+ * Boot a minimal application context for DB tasks.
  *
- * Зачем: миграции/сидеры используют Facade\DB и Faravel\Database\Database.
- * Нам нужен контейнер и провайдеры конфигов/DB, но не нужны маршруты и boot-хуки.
- *
- * @param string|null $projectRoot Абсолютный корень проекта. Если null — вычислим автоматически.
+ * @param string|null $projectRoot Absolute project root; default auto-detects from framework/.
  *
  * Preconditions:
- * - В $projectRoot существуют каталоги framework/, config/, database/.
- *
+ * - $projectRoot contains framework/, app/, config/, database/.
  * Side effects:
- * - Создаёт Application, фиксирует его как текущий инстанс; загружает .env и конфиги,
- *   регистрирует провайдеры (без loadRoutes/boot).
+ * - Creates Application, sets Facades app, registers providers (no routes/boot).
  *
  * @return Application
- * @throws RuntimeException если не найден корень проекта или init не удался.
+ * @throws RuntimeException When project root invalid or 'db' binding is missing.
  * @example $app = faravel_migrator_boot(__DIR__ . '/..');
  */
 function faravel_migrator_boot(?string $projectRoot = null): Application
@@ -38,47 +33,60 @@ function faravel_migrator_boot(?string $projectRoot = null): Application
         return $bootedApp;
     }
 
-    // 1) Корень проекта
-    $root = $projectRoot ?: dirname(__DIR__); // framework/.. => проект
+    // 1) Locate root
+    $root = $projectRoot ?: dirname(__DIR__);
     if (!is_dir($root)) {
         throw new RuntimeException('Invalid project root for migrator: ' . (string)$root);
     }
 
-    // 2) Базовый init (только автозагрузка ядра и хелперы)
+    // 2) Core + App autoloaders + helpers
     require_once $root . '/framework/init.php';
+    if (is_file($root . '/app/init.php')) {
+        require_once $root . '/app/init.php';
+    }
     require_once $root . '/framework/helpers.php';
 
-    // 3) Контейнер приложения и привязка фасадов
+    // 3) Container and Facades
     $app = new Application($root);
     if (method_exists(Application::class, 'setInstance')) {
         Application::setInstance($app);
     }
     Facade::setApplication($app);
 
-    // 4) Регистрируем провайдеры (env/config/db/и т.д.). Маршруты/boot НЕ трогаем.
+    // 4) Providers (env/config/db/…); do not load routes/boot
     $app->registerConfiguredProviders();
+
+    // 4.1) Preflight: ensure 'db' binding exists (DatabaseServiceProvider loaded)
+    try {
+        $app->make('db');
+    } catch (\Throwable $e) {
+        throw new RuntimeException(
+            "Container binding [db] not found. Добавьте App\\Providers\\DatabaseServiceProvider ".
+            "в 'providers' config/app.php до запуска миграций."
+        );
+    }
 
     $bootedApp = $app;
     return $app;
 }
 
 /**
- * Прогоняет ВСЕ миграции из database/migrations (в лексикографическом порядке).
+ * Run ALL migrations from database/migrations (lexicographic order).
  *
- * Формат миграции: файл возвращает объект (анон. класс) с методом up():
- *     <?php
- *     use Faravel\Support\Facades\DB;
- *     return new class { public function up(){ DB::connection()->exec('...'); } };
+ * File contract: returns an object (anonymous class) with up():
+ *   <?php
+ *   use Faravel\Support\Facades\DB;
+ *   return new class { public function up(): void { DB::statement('…'); } };
  *
  * @return array{applied:array<int,string>, errors:array<int,string>}
- * @example $res = faravel_migrate_all(); // ['applied'=>['2025_...php',...], 'errors'=>[]]
+ * @example $res = faravel_migrate_all();
  */
 function faravel_migrate_all(): array
 {
-    $app = faravel_migrator_boot(); // контейнер + DB фасад доступны
+    $app = faravel_migrator_boot();
 
     $root = $app->basePath() ?? dirname(__DIR__);
-    $dir = $root . '/database/migrations';
+    $dir  = $root . '/database/migrations';
     $result = ['applied' => [], 'errors' => []];
 
     if (!is_dir($dir)) {
@@ -87,12 +95,13 @@ function faravel_migrate_all(): array
     }
 
     $files = glob($dir . '/*.php') ?: [];
-    sort($files, SORT_STRING);
+    sort($files, SORT_STRING); // deterministic order
 
     foreach ($files as $file) {
         $name = basename($file);
         try {
-            /** @var object|null $migration */
+            /** @var object{up:callable}|mixed $migration */
+            /** @psalm-suppress UnresolvableInclude */
             $migration = require $file;
 
             if (is_object($migration) && method_exists($migration, 'up')) {
@@ -102,7 +111,7 @@ function faravel_migrate_all(): array
             } else {
                 $result['errors'][] = "[migrate] {$name}: invalid format (no object with up())";
             }
-        } catch (Throwable $e) {
+        } catch (\Throwable $e) {
             $result['errors'][] = "[migrate] {$name}: " . $e->getMessage();
         }
     }
@@ -111,24 +120,19 @@ function faravel_migrate_all(): array
 }
 
 /**
- * Прогоняет сидеры из database/seeders.
+ * Run seeders from database/seeders.
  *
- * Контракты (best-effort):
- *  - Database\Seeders\Seeder (база): __construct(Database $db), method run(): void
- *  - Database\Seeders\DatabaseSeeder: orchestrator общего набора
- *  - Отдельные сидеры (AbilitiesSeeder/PerksSeeder): могут использовать Facade\DB
- *    или расширять базовый Seeder.
+ * Contracts (best-effort):
+ *  - Database\Seeders\DatabaseSeeder::run()
+ *  - Database\Seeders\AbilitiesSeeder::run()
+ *  - Database\Seeders\PerksSeeder::run()
  *
  * @return array{seeded:array<int,string>, errors:array<int,string>}
- * @example $res = faravel_seed_all(); // ['seeded'=>['DatabaseSeeder',...], 'errors'=>[]]
+ * @example $res = faravel_seed_all();
  */
 function faravel_seed_all(): array
 {
     $app = faravel_migrator_boot();
-
-    // Убедимся, что есть подключение DB в контейнере
-    /** @var Database $db */
-    $db = \app('db');
 
     $root = $app->basePath() ?? dirname(__DIR__);
     $dir  = $root . '/database/seeders';
@@ -139,41 +143,36 @@ function faravel_seed_all(): array
         return $result;
     }
 
-    // Подгружаем базовый Seeder первым, чтобы наследование не падало
+    // Fallback include: ensure classes are declared even if autoload is customized
     $base = $dir . '/Seeder.php';
     if (is_file($base)) {
         /** @psalm-suppress UnresolvableInclude */
         require_once $base;
     }
-
-    // Загружаем остальные классы сидеров
     foreach (glob($dir . '/*.php') ?: [] as $file) {
         if ($file === $base) continue;
         /** @psalm-suppress UnresolvableInclude */
         require_once $file;
     }
 
-    $queue = [
+    $classes = [
         'Database\\Seeders\\DatabaseSeeder',
         'Database\\Seeders\\AbilitiesSeeder',
         'Database\\Seeders\\PerksSeeder',
     ];
 
-    foreach ($queue as $class) {
-        if (!class_exists($class)) {
-            continue;
-        }
+    foreach ($classes as $class) {
         try {
-            $ref = new ReflectionClass($class);
-
-            // Если сидер — наследник базы, инжектим Database $db в конструктор
-            if ($ref->isSubclassOf('Database\\Seeders\\Seeder')) {
-                /** @var object $seeder */
-                $seeder = $ref->newInstance($db);
-            } else {
-                /** @var object $seeder */
-                $seeder = $ref->newInstance();
+            if (!class_exists($class)) {
+                $result['errors'][] = "[seed] {$class}: class not found";
+                continue;
             }
+
+            $ref  = new ReflectionClass($class);
+            $ctor = $ref->getConstructor();
+            $seeder = ($ctor && $ctor->getNumberOfParameters() > 0)
+                ? $ref->newInstance($app->make('db'))
+                : $ref->newInstance();
 
             if (!method_exists($seeder, 'run')) {
                 $result['errors'][] = "[seed] {$class}: no run() method";
@@ -183,7 +182,7 @@ function faravel_seed_all(): array
             $seeder->run();
             $result['seeded'][] = $class;
             echo "[seed] done: {$class}\n";
-        } catch (Throwable $e) {
+        } catch (\Throwable $e) {
             $result['errors'][] = "[seed] {$class}: " . $e->getMessage();
         }
     }

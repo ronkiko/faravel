@@ -2,39 +2,39 @@
 
 return [
     'name'    => 'Faravel',
-    'version' => '0.3.8',
+    'version' => '0.4.91',
     'debug'   => false,
 
     /*
      * Provider boot order matters:
      * - Core infra first (DB/Cache/Event)
      * - Session/Auth stack
-     * - Gate provider (binds 'gate')
+     * - Gate provider (binds 'gate') and Security
      * - Ability provider (uses Gate::define)
+     * - Localization
      * - Views
      * - Routing and HTTP middleware
      */
     'providers' => [
-        // Core & infra
-        App\Providers\AppServiceProvider::class,
+
+        // Core infra first
         App\Providers\DatabaseServiceProvider::class,
         App\Providers\CacheServiceProvider::class,
         App\Providers\EventServiceProvider::class,
-        App\Providers\SyncServiceProvider::class,
-        App\Providers\LangServiceProvider::class,
 
-        // HTTP session first (auth depends on it)
+        // Session/Auth stack
         App\Providers\SessionServiceProvider::class,
-
-        // Auth containers
         App\Providers\AuthServiceProvider::class,
 
-        // Gate must appear before abilities
+        // Gate and security
         App\Providers\GateServiceProvider::class,
         App\Providers\SecurityServiceProvider::class,
 
-        // Abilities (now safe to use Gate)
+        // Abilities (uses Gate)
         App\Providers\AbilityServiceProvider::class,
+
+        // Localization
+        App\Providers\LangServiceProvider::class,
 
         // Views/UI
         App\Providers\ViewServiceProvider::class,
@@ -46,7 +46,8 @@ return [
 
         // Optional legacy compat
         App\Providers\AuthContainerServiceProvider::class,
-        
+
+        // Compliance checks for ViewModels
         App\Providers\ViewModelComplianceServiceProvider::class,
     ],
 ];

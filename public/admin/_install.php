@@ -1,10 +1,10 @@
-<?php // v0.4.6
+<?php // v0.4.9
 /* public/admin/_install.php
 Purpose: Модуль «Инсталлятор» в SafeMode-админке. Подготовка БД (create/drop), проверка
          подключения, миграции/сиды через framework/migrator.php, управление installed.lock.
-FIX: Заменены вызовы create/drop на корректные DatabaseAdmin::createDatabaseIfNotExists() и
-     DatabaseAdmin::dropDatabase(). Проверка подключения оставлена через canConnect($cfg).
-     Обновлён сценарий Fresh (drop/create через новые методы).
+FIX: После create/drop выполняется верификация состояния через DatabaseAdmin::databaseExists().
+     Сообщения стали правдивыми: «создана/не создана», «удалена/не удалена». В "Проверить
+     подключение" добавлен подробный отчёт DatabaseAdmin::testReport().
 */
 
 declare(strict_types=1);
@@ -180,9 +180,7 @@ function install_render_form(array $cfg, bool $runnerAvailable, bool $lockExists
         echo '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">';
         echo '<button name="action" value="migrate">Применить миграции</button>';
         echo '<button name="action" value="seed">Выполнить сиды</button>';
-        echo '<label style="margin-left:16px">'
-            . '<input type="checkbox" name="fresh" value="1"> Fresh (drop + migrate + seed)</label>';
-        echo '<button name="action" value="fresh">Выполнить Fresh</button>';
+        echo '<button name="action" value="fresh">Выполнить Fresh (drop + migrate + seed)</button>';
         echo '</div>';
     } else {
         admin_alert(
@@ -214,13 +212,15 @@ function install_render_form(array $cfg, bool $runnerAvailable, bool $lockExists
 /**
  * Handle install actions using DatabaseAdmin and the runner.
  *
+ * Почему так: слой Controller для инсталлятора. После create/drop сразу перепроверяем
+ * фактическое состояние БД и возвращаем подробности диагностики.
+ *
  * @param string $action One of: connect|create|drop|migrate|seed|fresh|lock_create|lock_delete
  * @param array{
  *   driver:string, host:string, port:string, database:string, username:string, password:string
  * } $cfg
  * @param array{migrate:callable|null, seed:callable|null} $runner
- * @param bool   $confirm   Confirm flag for CREATE/DROP.
- * @param bool   $freshOpt  If set, fresh mode equals drop+migrate+seed.
+ * @param bool   $confirm   Confirm flag for CREATE/DROP/Fresh.
  * @param string $root      Absolute project root.
  * @param bool   $lockConf  Confirm flag for deleting installed.lock.
  * @return array{ok:bool,title:string,message:string,details?:mixed}
@@ -230,20 +230,30 @@ function install_handle_action(
     array $cfg,
     array $runner,
     bool $confirm,
-    bool $freshOpt,
     string $root,
     bool $lockConf
 ): array {
     try {
         switch ($action) {
             case 'connect': {
-                $ok = DBA::canConnect($cfg);
+                // Detailed diagnostic instead of a simple boolean.
+                $rep = DBA::testReport($cfg);
+                $msg = [];
+                $msg[] = $rep['server_ok'] ? 'Сервер доступен.' : 'Сервер недоступен.';
+                if ($rep['db_exists'] === true)   { $msg[] = 'БД существует.'; }
+                if ($rep['db_exists'] === false)  { $msg[] = 'БД не существует.'; }
+                if ($rep['connect_ok'] === true)  { $msg[] = 'Подключение к БД успешно.'; }
+                if ($rep['connect_ok'] === false) { $msg[] = 'Подключиться к БД не удалось.'; }
+                if (!empty($rep['error']))        { $msg[] = 'Ошибка: ' . $rep['error']; }
+
                 return [
-                    'ok' => (bool)$ok,
-                    'title' => 'Проверка подключения',
-                    'message' => $ok ? 'Подключение успешно.' : 'Подключиться не удалось.',
+                    'ok'      => $rep['server_ok'] && ($rep['connect_ok'] ?? true),
+                    'title'   => 'Проверка подключения',
+                    'message' => implode(' ', $msg),
+                    'details' => $rep,
                 ];
             }
+
             case 'create': {
                 if (!$confirm) {
                     return [
@@ -253,12 +263,20 @@ function install_handle_action(
                     ];
                 }
                 DBA::createDatabaseIfNotExists($cfg);
+                // Verify state
+                $exists = DBA::databaseExists($cfg);
+                $rep = DBA::testReport($cfg);
+
                 return [
-                    'ok' => true,
-                    'title' => 'Создание БД',
-                    'message' => 'База создана (или уже существовала).',
+                    'ok'      => $exists,
+                    'title'   => 'Создание БД',
+                    'message' => $exists
+                        ? 'База создана или уже существовала.'
+                        : 'Команда выполнена, но БД не найдена. Проверьте привилегии пользователя.',
+                    'details' => $rep,
                 ];
             }
+
             case 'drop': {
                 if (!$confirm) {
                     return [
@@ -268,12 +286,20 @@ function install_handle_action(
                     ];
                 }
                 DBA::dropDatabase($cfg);
+                // Verify state
+                $exists = DBA::databaseExists($cfg);
+                $rep = DBA::testReport($cfg);
+
                 return [
-                    'ok' => true,
-                    'title' => 'Удаление БД',
-                    'message' => 'База удалена (если существовала).',
+                    'ok'      => !$exists,
+                    'title'   => 'Удаление БД',
+                    'message' => !$exists
+                        ? 'База удалена (или не существовала).'
+                        : 'Команда выполнена, но БД всё ещё существует. Проверьте привилегии.',
+                    'details' => $rep,
                 ];
             }
+
             case 'migrate': {
                 if (!$runner['migrate']) {
                     return [
@@ -288,10 +314,13 @@ function install_handle_action(
                 return [
                     'ok' => empty($res['errors'] ?? []),
                     'title' => 'Миграции',
-                    'message' => 'Миграции выполнены.',
+                    'message' => empty($res['errors'] ?? [])
+                        ? 'Миграции выполнены.'
+                        : 'Миграции завершились с ошибками.',
                     'details' => $res,
                 ];
             }
+
             case 'seed': {
                 if (!$runner['seed']) {
                     return [
@@ -306,23 +335,48 @@ function install_handle_action(
                 return [
                     'ok' => empty($res['errors'] ?? []),
                     'title' => 'Сиды',
-                    'message' => 'Сиды выполнены.',
+                    'message' => empty($res['errors'] ?? [])
+                        ? 'Сиды выполнены.'
+                        : 'Сиды завершились с ошибками.',
                     'details' => $res,
                 ];
             }
+
             case 'fresh': {
-                if (!$confirm || !$freshOpt) {
+                if (!$confirm) {
                     return [
                         'ok' => false,
                         'title' => 'Fresh',
-                        'message' => 'Отсутствует подтверждение выполнения Fresh.',
+                        'message' => 'Отсутствует подтверждение выполнения Fresh '
+                            . '(поставьте чекбокс "Подтверждаю операции CREATE/DROP").',
                     ];
                 }
+                // Drop + verify
                 DBA::dropDatabase($cfg);
-                DBA::createDatabaseIfNotExists($cfg);
+                $afterDropExists = DBA::databaseExists($cfg);
+                if ($afterDropExists) {
+                    return [
+                        'ok' => false,
+                        'title' => 'Fresh',
+                        'message' => 'Не удалось удалить БД (проверьте привилегии).',
+                        'details' => DBA::testReport($cfg),
+                    ];
+                }
 
-                $mig = $runner['migrate'] ? ($runner['migrate'])() : ['errors' => ['no runner']];
-                $seed = $runner['seed'] ? ($runner['seed'])() : ['errors' => ['no runner']];
+                // Create + verify
+                DBA::createDatabaseIfNotExists($cfg);
+                $afterCreateExists = DBA::databaseExists($cfg);
+                if (!$afterCreateExists) {
+                    return [
+                        'ok' => false,
+                        'title' => 'Fresh',
+                        'message' => 'Не удалось создать БД (проверьте привилегии).',
+                        'details' => DBA::testReport($cfg),
+                    ];
+                }
+
+                $mig  = $runner['migrate'] ? ($runner['migrate'])() : ['errors' => ['no runner']];
+                $seed = $runner['seed']    ? ($runner['seed'])()    : ['errors' => ['no runner']];
 
                 $ok = empty($mig['errors'] ?? []) && empty($seed['errors'] ?? []);
                 return [
@@ -334,9 +388,11 @@ function install_handle_action(
                     'details' => [
                         'migrate' => $mig,
                         'seed' => $seed,
+                        'report' => DBA::testReport($cfg),
                     ],
                 ];
             }
+
             case 'lock_create': {
                 $res = install_lock_create($root);
                 return [
@@ -360,6 +416,7 @@ function install_handle_action(
                     'message' => $res['message'],
                 ];
             }
+
             default:
                 return [
                     'ok' => false,
@@ -417,13 +474,12 @@ $runner = install_try_load_runner($root);
 
 $action     = (string)($_POST['action'] ?? '');
 $confirm    = isset($_POST['confirm']) && $_POST['confirm'] === '1';
-$freshOpt   = isset($_POST['fresh']) && $_POST['fresh'] === '1';
 $lockExists = install_lock_exists($root);
 $lockConf   = isset($_POST['lock_confirm']) && $_POST['lock_confirm'] === '1';
 
 install_render_form($cfg, (bool)($runner['migrate'] && $runner['seed']), $lockExists);
 
 if ($action !== '') {
-    $res = install_handle_action($action, $cfg, $runner, $confirm, $freshOpt, $root, $lockConf);
+    $res = install_handle_action($action, $cfg, $runner, $confirm, $root, $lockConf);
     install_render_result($res);
 }
