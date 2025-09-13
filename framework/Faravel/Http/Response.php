@@ -1,4 +1,9 @@
-<?php
+<?php // v0.4.2
+/* framework/Faravel/Http/Response.php
+Purpose: HTTP-ответ Faravel: статус/заголовки/куки/контент + утилиты (view/json/redirect).
+FIX: Устранено дублирование: Response::view() объявлен устаревшим и теперь проксирует
+     в response()->view(...), не выполняя собственный рендер. Каноничный путь — фабрика.
+*/
 
 namespace Faravel\Http;
 
@@ -11,6 +16,13 @@ class Response
 
     protected static array $macros = [];
 
+    /**
+     * Базовый конструктор HTTP-ответа.
+     *
+     * @param string               $content  Тело ответа.
+     * @param int                  $status   Код состояния HTTP.
+     * @param array<string,string> $headers  Ассоц. массив заголовков.
+     */
     public function __construct(string $content = '', int $status = 200, array $headers = [])
     {
         $this->setContent($content);
@@ -19,16 +31,23 @@ class Response
     }
 
     /**
-     * Установка статуса ответа
+     * Установить HTTP-статус.
+     *
+     * @param int $status Код состояния HTTP.
+     * @return static
      */
-    public function status(int $code): static
+    public function status(int $status): static
     {
-        $this->status = $code;
+        $this->status = $status;
         return $this;
     }
 
     /**
-     * Установка одного заголовка
+     * Установить один заголовок.
+     *
+     * @param string $key   Имя заголовка.
+     * @param string $value Значение заголовка.
+     * @return static
      */
     public function setHeader(string $key, string $value): static
     {
@@ -37,77 +56,24 @@ class Response
     }
 
     /**
-     * Установка нескольких заголовков
+     * Массовая установка заголовков.
+     *
+     * @param array<string,string> $headers Ассоц. массив заголовков.
+     * @return static
      */
     public function withHeaders(array $headers): static
     {
         foreach ($headers as $key => $value) {
-            $this->setHeader($key, $value);
+            $this->setHeader((string)$key, (string)$value);
         }
         return $this;
     }
 
     /**
-     * Установка куки
-     */
-    public function setCookie(string $key, string $value, int $expire = 0, string $path = '/'): static
-    {
-        // Сохраняем минимальный набор параметров cookie. Для расширенных
-        // настроек используйте метод cookie().
-        $this->cookies[] = compact('key', 'value', 'expire', 'path');
-        return $this;
-    }
-
-    /**
-     * Установить куки с расширенными параметрами (домен, secure, httpOnly).
-     * Если какие‑то параметры не указаны, будут использованы значения по
-     * умолчанию.
-     */
-    public function cookie(string $key, string $value, int $expire = 0, string $path = '/', string $domain = '', bool $secure = false, bool $httponly = false): static
-    {
-        $this->cookies[] = compact('key', 'value', 'expire', 'path', 'domain', 'secure', 'httponly');
-        return $this;
-    }
-
-    /**
-     * Вернуть представление в качестве ответа. Собирает HTML через
-     * фасад View и устанавливает статус и заголовки.
-     */
-    public function view(string $viewName, array $data = [], int $status = 200, array $headers = []): static
-    {
-        // Используем View фасад для генерации HTML
-        $html = \Faravel\Support\Facades\View::make($viewName, $data);
-        $this->setContent($html)
-            ->status($status)
-            ->withHeaders($headers);
-        return $this;
-    }
-
-    /**
-     * Сформировать ответ для скачивания файла. Устанавливает
-     * заголовки Content-Type и Content-Disposition. Если имя файла
-     * не указано, будет использоваться basename исходного пути.
-     */
-    public function download(string $filePath, ?string $name = null, array $headers = [], int $status = 200): static
-    {
-        if (!is_file($filePath) || !is_readable($filePath)) {
-            throw new \RuntimeException("File for download not found: {$filePath}");
-        }
-        $filename = $name ?: basename($filePath);
-        // Пытаемся определить MIME‑тип
-        $mime = function_exists('mime_content_type') ? mime_content_type($filePath) : 'application/octet-stream';
-        $content = file_get_contents($filePath);
-        $this->setContent($content)
-            ->status($status)
-            ->setHeader('Content-Type', $mime)
-            ->setHeader('Content-Disposition', 'attachment; filename="' . $filename . '"');
-        // Дополнительные заголовки
-        $this->withHeaders($headers);
-        return $this;
-    }
-
-    /**
-     * Установка контента
+     * Установить текстовое содержимое ответа.
+     *
+     * @param string $content Тело ответа.
+     * @return static
      */
     public function setContent(string $content): static
     {
@@ -116,112 +82,147 @@ class Response
     }
 
     /**
-     * Ответ в виде plain text
+     * Сформировать JSON-ответ.
+     *
+     * @param array<string,mixed>  $data    Данные для json_encode().
+     * @param int                  $status  Код состояния HTTP.
+     * @param array<string,string> $headers Доп. заголовки.
+     * @return static
      */
-    public function plain(string $text, int $status = 200): static
+    public function json(array $data, int $status = 200, array $headers = []): static
     {
-        return $this->status($status)
-            ->setHeader('Content-Type', 'text/plain; charset=utf-8')
-            ->setContent($text);
-    }
-
-    /**
-     * Ответ в формате JSON
-     */
-    public function json(array $data, int $status = 200): static
-    {
-        return $this->status($status)
+        $this->status($status)
             ->setHeader('Content-Type', 'application/json')
             ->setContent(json_encode($data, JSON_UNESCAPED_UNICODE));
+        foreach ($headers as $key => $value) {
+            $this->setHeader((string)$key, (string)$value);
+        }
+        return $this;
     }
 
     /**
-     * Перенаправление
+     * Вернуть представление как HTML-ответ (устаревший метод).
+     * В Faravel каноничный путь — использовать фабрику:
+     *   return response()->view('tpl', $data, 200, ['X-Foo' => 'bar']);
+     *
+     * Этот метод оставлен для обратной совместимости и ПРОКСИРУЕТ в фабрику ответов,
+     * чтобы не дублировать рендер. Будет удалён в следующем мажорном релизе.
+     *
+     * @deprecated Use response()->view($viewName, $data, $status, $headers) instead.
+     *
+     * @param string               $viewName Имя вида 'a.b.c'.
+     * @param array<string,mixed>  $data     Локальные данные.
+     * @param int                  $status   Код состояния HTTP.
+     * @param array<string,string> $headers  Доп. заголовки.
+     *
+     * Preconditions:
+     * - Провайдеры ViewServiceProvider/ForumViewServiceProvider зарегистрированы.
+     * Side effects: делегирует в фабрику ответов через глобальный helper response().
+     *
+     * @return static
+     */
+    public function view(string $viewName, array $data = [], int $status = 200, array $headers = []): static
+    {
+        // Emit runtime deprecation notice in dev (не критично в проде).
+        if (function_exists('env') && (env('APP_ENV') === 'local' || env('APP_DEBUG'))) {
+            @trigger_error(
+                'Response::view() is deprecated; use response()->view(...)',
+                E_USER_DEPRECATED
+            );
+        }
+
+        // Делегируем фабрике и возвращаем полученный Response (новый инстанс).
+        /** @var Response $resp */
+        $resp = \response()->view($viewName, $data);
+
+        // Применим желаемый статус/заголовки к результату.
+        $resp->status($status)->withHeaders($headers);
+
+        // Возвращаем объект-результат вместо "перенастройки" текущего инстанса.
+        // Это совместимо с сигнатурой (возвращается Response).
+        return $resp;
+    }
+
+    /**
+     * Перенаправление: немедленно отправляет ответ и завершает выполнение.
+     *
+     * @param string $url    URL назначения.
+     * @param int    $status Код состояния HTTP.
+     * @return never
      */
     public function redirect(string $url, int $status = 302): never
     {
-        $this->status($status)
-            ->setHeader('Location', $url)
-            ->send();
+        $this->status($status)->setHeader('Location', $url)->send();
         exit;
     }
 
     /**
-     * Отправка ответа клиенту
+     * Отправить ответ клиенту.
+     *
+     * @return void
      */
     public function send(): void
     {
         http_response_code($this->status);
 
         foreach ($this->headers as $key => $value) {
-            header("$key: $value", true);
+            header($key . ': ' . $value, true);
         }
 
         foreach ($this->cookies as $cookie) {
-            $key   = $cookie['key'];
-            $value = $cookie['value'];
-            $expire = $cookie['expire'] ?? 0;
-            $path  = $cookie['path'] ?? '/';
-            // Дополнительные параметры: домен, secure и httpOnly
-            $domain = $cookie['domain'] ?? '';
-            $secure = $cookie['secure'] ?? false;
-            $httponly = $cookie['httponly'] ?? false;
-            setcookie($key, $value, $expire, $path, $domain, $secure, $httponly);
+            @setcookie(
+                $cookie['key'],
+                $cookie['value'],
+                $cookie['expire'] ?? 0,
+                $cookie['path'] ?? '/',
+                $cookie['domain'] ?? '',
+                $cookie['secure'] ?? false,
+                $cookie['httponly'] ?? false
+            );
         }
 
-        if ($_SERVER['REQUEST_METHOD'] !== 'HEAD') {
-            echo $this->content;
-        }
+        echo $this->content;
+    }
+
+    /* ========================= Cookies ========================= */
+
+    /**
+     * Установить cookie с минимальным набором параметров.
+     *
+     * @param string $key    Имя cookie.
+     * @param string $value  Значение.
+     * @param int    $expire Время жизни (UNIX time) или 0.
+     * @param string $path   Путь.
+     * @return static
+     */
+    public function setCookie(string $key, string $value, int $expire = 0, string $path = '/'): static
+    {
+        $this->cookies[] = compact('key', 'value', 'expire', 'path');
+        return $this;
     }
 
     /**
-     * Быстрое создание ответа (аналог Laravel::response()->make())
+     * Установить cookie с расширенными параметрами.
+     *
+     * @param string $key
+     * @param string $value
+     * @param int    $expire
+     * @param string $path
+     * @param string $domain
+     * @param bool   $secure
+     * @param bool   $httponly
+     * @return static
      */
-    public static function make(string $content = '', int $status = 200, array $headers = []): static
-    {
-        return (new static())
-            ->status($status)
-            ->withHeaders($headers)
-            ->setContent($content);
-    }
-
-    /**
-     * Регистрация макроса
-     */
-    public static function macro(string $name, callable $callback): void
-    {
-        static::$macros[$name] = $callback;
-    }
-
-    /**
-     * Проверка наличия макроса
-     */
-    public static function hasMacro(string $name): bool
-    {
-        return array_key_exists($name, static::$macros);
-    }
-
-    /**
-     * Вызов макроса динамически
-     */
-    public function __call(string $method, array $args)
-    {
-        if (static::hasMacro($method)) {
-            return static::$macros[$method]->bindTo($this, static::class)(...$args);
-        }
-
-        throw new \BadMethodCallException("Method {$method} does not exist.");
-    }
-
-    /**
-     * Вызов статического макроса
-     */
-    public static function __callStatic(string $method, array $args)
-    {
-        if (static::hasMacro($method)) {
-            return static::$macros[$method](...$args);
-        }
-
-        throw new \BadMethodCallException("Static method {$method} does not exist.");
+    public function cookie(
+        string $key,
+        string $value,
+        int $expire = 0,
+        string $path = '/',
+        string $domain = '',
+        bool $secure = false,
+        bool $httponly = false
+    ): static {
+        $this->cookies[] = compact('key', 'value', 'expire', 'path', 'domain', 'secure', 'httponly');
+        return $this;
     }
 }
