@@ -1,5 +1,6 @@
 /vendor/
 /node_modules/
+<<<<<<< HEAD
 /storage/*
 !/storage/.gitkeep
 /.env
@@ -7,3 +8,20 @@
 /db_data/
 /.idea/
 /.vscode/
+=======
+/dist/
+/build/
+
+# Environment & cache
+.env
+.env.*
+/storage/logs/
+/storage/cache/
+/storage/framework/*
+
+# Misc
+*.log
+*.tmp
+*.swp
+faravel/
+>>>>>>> 5459fe7 (chore: ignore accidental nested repo (faravel))
