@@ -25,3 +25,6 @@
 *.swp
 faravel/
 >>>>>>> 5459fe7 (chore: ignore accidental nested repo (faravel))
+
+# prevent re-adding old project
+faravel/
