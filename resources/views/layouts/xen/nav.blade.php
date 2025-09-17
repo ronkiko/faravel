@@ -1,35 +1,48 @@
-<!-- v0.4.10 -->
-{{-- resources/views/layouts/xen/nav.blade.php
-Назначение: липкий навбар Xen. Мобайл: бургер слева, «Войти» справа, drawer без JS.
-FIX: Добавлены шапка drawer'а с заголовком «Меню» и кнопкой-крестиком (label→checkbox),
-     чтобы мобильное меню можно было закрыть. Остальной DOM без изменений.
---}}
+<!-- v0.4.5 -->
+<!-- resources/views/layouts/xen/nav.blade.php
+Назначение: верхняя навигация темы Xen. Подсветка активного пункта строится
+по строке layout.nav.active ∈ {home,forum,admin,mod}. Ссылки берутся из
+layout.nav.links, права показа — из layout.nav.show, данные пользователя — из
+layout.nav.auth. Совместимо со строгим Blade (никаких функций/тернариев).
+-->
 <nav class="xen-navbar">
-  <!-- CSS-only toggle -->
   <input id="xnav" class="xen-nav__checkbox" type="checkbox" aria-label="Открыть меню">
-
-  <!-- Burger (visible on mobile) -->
   <label class="xen-burger" for="xnav" aria-hidden="true"></label>
 
-  <!-- Inline menubar (desktop) -->
   <div class="xen-menubar__inner">
     <div class="xen-menubar__left">
-      <a class="xen-menubar__link @if($layout['nav']['active']==='home') is-active @endif"
-         href="{{ $layout['nav']['links']['home'] }}">Главная</a>
+      <a
+        class="xen-menubar__link @if($layout['nav']['active']==='home') is-active @endif"
+        href="{{ $layout['nav']['links']['home'] }}"
+      >Главная</a>
 
-      <a class="xen-menubar__link @if($layout['nav']['active']==='forum') is-active @endif"
-         href="{{ $layout['nav']['links']['forum'] }}">Форум</a>
+      <a
+        class="xen-menubar__link @if($layout['nav']['active']==='forum') is-active @endif"
+        href="{{ $layout['nav']['links']['forum'] }}"
+      >Форум</a>
 
-      @if($layout['nav']['auth']['is_admin'])
-        <a class="xen-menubar__link @if($layout['nav']['active']==='admin') is-active @endif"
-           href="{{ $layout['nav']['links']['admin'] }}">Админка</a>
+      @if($layout['nav']['show']['admin'])
+        <a
+          class="xen-menubar__link @if($layout['nav']['active']==='admin') is-active @endif"
+          href="{{ $layout['nav']['links']['admin'] }}"
+        >Админка</a>
+      @endif
+
+      @if($layout['nav']['show']['mod'])
+        <a
+          class="xen-menubar__link @if($layout['nav']['active']==='mod') is-active @endif"
+          href="{{ $layout['nav']['links']['mod'] }}"
+        >Модератор</a>
       @endif
     </div>
 
     <div class="xen-menubar__right">
-      @if($layout['nav']['auth']['is_auth'])
+      @if ($layout['nav']['auth']['is_auth'])
         <span class="xen-user">{{ $layout['nav']['auth']['username'] }}</span>
-        <a class="xen-menubar__link" href="{{ $layout['nav']['links']['logout'] }}">Выйти</a>
+        <form method="POST" action="{{ $layout['nav']['links']['logout'] }}" class="xen-logout-form" style="display:inline;">
+          <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
+          <button type="submit" class="xen-menubar__link">Выйти</button>
+        </form>
       @else
         <a class="xen-btn--login @if($layout['nav']['active']==='login') is-active @endif"
            href="{{ $layout['nav']['links']['login'] }}">Войти</a>
@@ -37,7 +50,6 @@ FIX: Добавлены шапка drawer'а с заголовком «Меню�
     </div>
   </div>
 
-  <!-- Drawer (mobile) -->
   <aside class="xen-drawer" aria-hidden="true">
     <div class="xen-drawer__header">
       <div class="xen-drawer__title">Меню</div>
@@ -45,17 +57,27 @@ FIX: Добавлены шапка drawer'а с заголовком «Меню�
     </div>
 
     <div class="xen-drawer__section">
-      <a href="{{ $layout['nav']['links']['home'] }}">Главная</a>
-      <a href="{{ $layout['nav']['links']['forum'] }}">Форум</a>
-      @if($layout['nav']['auth']['is_admin'])
-        <a href="{{ $layout['nav']['links']['admin'] }}">Админка</a>
+      <a class="@if($layout['nav']['active']==='home') is-active @endif"
+         href="{{ $layout['nav']['links']['home'] }}">Главная</a>
+      <a class="@if($layout['nav']['active']==='forum') is-active @endif"
+         href="{{ $layout['nav']['links']['forum'] }}">Форум</a>
+      @if($layout['nav']['show']['admin'])
+        <a class="@if($layout['nav']['active']==='admin') is-active @endif"
+           href="{{ $layout['nav']['links']['admin'] }}">Админ</a>
+      @endif
+      @if($layout['nav']['show']['mod'])
+        <a class="@if($layout['nav']['active']==='mod') is-active @endif"
+           href="{{ $layout['nav']['links']['mod'] }}">Модератор</a>
       @endif
     </div>
 
     <div class="xen-drawer__section">
-      @if($layout['nav']['auth']['is_auth'])
+      @if ($layout['nav']['auth']['is_auth'])
         <div class="xen-drawer__user">{{ $layout['nav']['auth']['username'] }}</div>
-        <a href="{{ $layout['nav']['links']['logout'] }}">Выйти</a>
+        <form method="POST" action="{{ $layout['nav']['links']['logout'] }}" class="xen-logout-form" style="display:inline;">
+          <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
+          <button type="submit" class="xen-linklike-btn">Выйти</button>
+        </form>
       @else
         <a href="{{ $layout['nav']['links']['login'] }}">Войти</a>
         <a href="{{ $layout['nav']['links']['register'] }}">Регистрация</a>
@@ -63,6 +85,5 @@ FIX: Добавлены шапка drawer'а с заголовком «Меню�
     </div>
   </aside>
 
-  <!-- Scrim: click to close -->
   <label class="xen-scrim" for="xnav" aria-hidden="true"></label>
 </nav>

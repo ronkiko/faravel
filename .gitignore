@@ -1,33 +1,27 @@
 /vendor/
 /node_modules/
-<<<<<<< HEAD
-/storage/*
-!/storage/.gitkeep
-/.env
-/.env.*
-/db_data/
-/.idea/
-/.vscode/
-=======
 /dist/
 /build/
 
-# Environment & cache
-.env
-.env.*
-/storage/logs/
-/storage/cache/
-/storage/framework/*
+/.env
+/.env.*
+
+# Storage: ignore everything, keep placeholders
+/storage/**
+!/storage/.gitignore
+!/storage/**/.gitignore
+!/storage/.gitkeep
+!/storage/**/.gitkeep
+
+# IDE
+/.idea/
+/.vscode/
+
+/db_data/
 
 # Misc
 *.log
 *.tmp
 *.swp
-faravel/
->>>>>>> 5459fe7 (chore: ignore accidental nested repo (faravel))
+.DS_Store
 
-# prevent re-adding old project
-faravel/
-
-# prevent re-adding old project
-faravel/

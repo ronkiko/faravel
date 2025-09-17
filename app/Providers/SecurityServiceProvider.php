@@ -10,6 +10,8 @@ namespace App\Providers;
 
 use Faravel\Foundation\ServiceProvider;
 
+use App\Support\Logger;
+
 final class SecurityServiceProvider extends ServiceProvider
 {
     /**
@@ -22,6 +24,8 @@ final class SecurityServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
         // Ничего не регистрируем.
     }
 
@@ -32,6 +36,8 @@ final class SecurityServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // Пусто.
     }
 }

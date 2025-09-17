@@ -1,22 +1,26 @@
-<?php // v0.4.4
+<?php // v0.4.123
 /* app/Http/ViewModels/Layout/LayoutVM.php
-Purpose: Layout ViewModel (site/nav/title/locale) — единый контракт для «немых»
-         Blade-вью Faravel. Жёстко фиксирует ключи, чтобы исключить рассинхрон.
-FIX: Полностью удалён DEPRECATED-алиас brand.*. Контракт окончательно переведён
-     на site.* (site.logo.url, site.home.url, site.title). nav.active обязателен.
+Purpose: ViewModel уровня лэйаута (site/nav/title/locale) для строгих Blade-шаблонов.
+         Жёстко нормализует ключи, включая nav.show.{admin,mod}.
+FIX: Добавлен верхнеуровневый layout.csrf для форм страницы (logout и прочих),
+     чтобы Blade оставался «тупым» и не вызывал хелперы. Контракт расширен и
+     согласован с LayoutService. DEPRECATED brand.* не используется.
 */
 namespace App\Http\ViewModels\Layout;
 
 /**
- * LayoutVM — data for layout-level partials (banner/nav). No logic inside.
+ * LayoutVM — данные для макета и навигации. Никакой логики внутри шаблонов.
  */
 final class LayoutVM
 {
     /** @var string UI locale */
     public string $locale = 'ru';
 
-    /** @var string Page <title> (not a part of site banner) */
+    /** @var string Page <title> */
     public string $title = 'Faravel';
+
+    /** @var string CSRF token available to any page forms */
+    public string $csrf = '';
 
     /**
      * Site banner block (above navbar).
@@ -39,44 +43,29 @@ final class LayoutVM
      * @var array{
      *   active:string,
      *   links:array<string,string>,
+     *   show:array{admin:bool,mod:bool},
      *   auth:array{is_auth:bool,is_admin:bool,username:string}
      * }
      */
     public array $nav = [
         'active' => 'home',
         'links'  => [],
+        'show'   => ['admin' => false, 'mod' => false],
         'auth'   => ['is_auth' => false, 'is_admin' => false, 'username' => ''],
     ];
 
     /**
-     * Create ViewModel from array produced by the service layer.
+     * Создать VM из массива, собранного сервисом.
      *
      * Preconditions:
-     * - 'title' present as string;
-     * - 'site' present with keys: site.title, site.logo.url, site.home.url (all strings);
-     * - 'nav' present with 'active' (non-empty string), 'links' map, 'auth' map.
+     * - 'title' is string;
+     * - 'csrf' is non-empty string (для форм);
+     * - 'site' содержит: site.title, site.logo.url, site.home.url (strings);
+     * - 'nav' содержит: 'active', 'links', 'show', 'auth'.
      *
-     * Side effects: none.
-     *
-     * @param array<string,mixed> $data Full layout payload.
+     * @param array<string,mixed> $data
      * @return static
-     * @throws \InvalidArgumentException If required keys are missing or types mismatch.
-     * @example
-     *   $vm = LayoutVM::fromArray([
-     *     'title' => 'Login',
-     *     'site'  => [
-     *       'title' => 'FARAVEL',
-     *       'logo'  => ['url' => '/style/logo.png'],
-     *       'home'  => ['url' => '/'],
-     *     ],
-     *     'nav' => [
-     *       'active' => 'login',
-     *       'links'  => [
-     *         'home'=>'/', 'forum'=>'/forum/', 'login'=>'/login', 'register'=>'/register'
-     *       ],
-     *       'auth'   => ['is_auth'=>false,'is_admin'=>false,'username'=>''],
-     *     ],
-     *   ]);
+     * @throws \InvalidArgumentException On missing keys or type mismatches.
      */
     public static function fromArray(array $data): static
     {
@@ -95,6 +84,12 @@ final class LayoutVM
             throw new \InvalidArgumentException('layout.title must be string');
         }
         $self->title = $data['title'];
+
+        // csrf (required — пустой токен нам не подходит)
+        if (!isset($data['csrf']) || !is_string($data['csrf']) || $data['csrf'] === '') {
+            throw new \InvalidArgumentException('layout.csrf must be non-empty string');
+        }
+        $self->csrf = $data['csrf'];
 
         // site.* (required)
         if (!isset($data['site']) || !is_array($data['site'])) {
@@ -129,6 +124,9 @@ final class LayoutVM
         if (!isset($nav['links']) || !is_array($nav['links'])) {
             throw new \InvalidArgumentException('layout.nav.links must be array<string,string>');
         }
+        if (!isset($nav['show']) || !is_array($nav['show'])) {
+            throw new \InvalidArgumentException('layout.nav.show must be array');
+        }
         if (!isset($nav['auth']) || !is_array($nav['auth'])) {
             throw new \InvalidArgumentException('layout.nav.auth must be array');
         }
@@ -144,14 +142,22 @@ final class LayoutVM
             $links[$k] = $v;
         }
 
-        $auth = $nav['auth'];
-        $isAuth   = (bool)($auth['is_auth']  ?? false);
-        $isAdmin  = (bool)($auth['is_admin'] ?? false);
-        $username = (string)($auth['username'] ?? '');
+        // normalize show
+        $show = [
+            'admin' => (bool)($nav['show']['admin'] ?? false),
+            'mod'   => (bool)($nav['show']['mod'] ?? false),
+        ];
+
+        // normalize auth
+        $authArr = $nav['auth'];
+        $isAuth   = (bool)($authArr['is_auth']  ?? false);
+        $isAdmin  = (bool)($authArr['is_admin'] ?? false);
+        $username = (string)($authArr['username'] ?? '');
 
         $self->nav = [
             'active' => $nav['active'],
             'links'  => $links,
+            'show'   => $show,
             'auth'   => [
                 'is_auth'  => $isAuth,
                 'is_admin' => $isAdmin,
@@ -168,8 +174,14 @@ final class LayoutVM
      * @return array{
      *   locale:string,
      *   title:string,
+     *   csrf:string,
      *   site:array{title:string,logo:array{url:string},home:array{url:string}},
-     *   nav:array<string,mixed>
+     *   nav:array{
+     *     active:string,
+     *     links:array<string,string>,
+     *     show:array{admin:bool,mod:bool},
+     *     auth:array{is_auth:bool,is_admin:bool,username:string}
+     *   }
      * }
      */
     public function toArray(): array
@@ -177,6 +189,7 @@ final class LayoutVM
         return [
             'locale' => $this->locale,
             'title'  => $this->title,
+            'csrf'   => $this->csrf,
             'site'   => $this->site,
             'nav'    => $this->nav,
         ];

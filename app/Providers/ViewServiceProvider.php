@@ -16,6 +16,8 @@ use Faravel\View\FileViewFinder;
 use Faravel\View\ViewFactory;
 use Faravel\Support\Facades\Blade;
 
+use App\Support\Logger;
+
 final class ViewServiceProvider extends ServiceProvider
 {
     /**
@@ -23,6 +25,9 @@ final class ViewServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
+
         // View finder (single root path). Read from config('view.paths'), fallback to /resources/views
         $this->app->singleton('view.finder', function ($app) {
             $paths = $app['config']['view.paths'] ?? null;
@@ -75,6 +80,8 @@ final class ViewServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // ... остальной код директив остаётся без изменений ...
     }
 }

@@ -1,8 +1,9 @@
-<?php // v0.4.4
+<?php // v0.4.5
 /* app/Providers/AuthServiceProvider.php
-Purpose: Провайдер auth-подсистемы; регистрирует 'auth' и FQCN AuthService в DI.
-FIX: добавлено логирование момента регистрации ('AUTH.PROVIDER.REGISTER'), чтобы
-     видеть, когда провайдер реально исполняется относительно запросов к 'auth'.
+Purpose: Провайдер auth-подсистемы; регистрирует 'auth' и AuthService в DI.
+FIX: Логирование перестроено. Используется новый Logger для записи простой
+     строки «Loaded OK» с тегом [AUTH.PROVIDER.REGISTER] в storage/logs/debug.log
+     при включённом отладочном режиме (app.debug = true).
 */
 
 namespace App\Providers;
@@ -10,7 +11,7 @@ namespace App\Providers;
 use Faravel\Foundation\ServiceProvider;
 use App\Services\Auth\AuthService;
 use Faravel\Http\Session;
-use App\Support\Debug;
+use App\Support\Logger;
 
 final class AuthServiceProvider extends ServiceProvider
 {
@@ -24,7 +25,8 @@ final class AuthServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        Debug::log('AUTH.PROVIDER.REGISTER', []);
+        // Write a human‑readable debug message when registering the provider
+        Logger::log('AUTH.PROVIDER.REGISTER', 'Loaded OK');
 
         if (!isset($this->app[AuthService::class])) {
             $this->app->singleton(AuthService::class, function ($app) {

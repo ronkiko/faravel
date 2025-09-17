@@ -1,7 +1,9 @@
-<?php // v0.1.5
-/* app/Services/Forum/CategoryQueryService.php — v0.1.5
-Назначение: выборки для страниц категорий/хабов (по slug), список категорий, топ-теги.
-FIX: добавлен findCategoryBySlug(); экшены переведены на чистый slug.
+<?php // v0.4.1
+/* app/Services/Forum/CategoryQueryService.php
+Purpose: Выборки для страниц категорий/хабов: найти категорию по slug, получить список
+         видимых категорий, топ-теги и список хабов для категории (category_tag→tags).
+FIX: Приведён к базовой версии v0.4.*; добавлен listHubsForCategory() с сортировкой по position
+     и title. Опирается только на реальные поля из миграций (без `pinned`).
 */
 namespace App\Services\Forum;
 
@@ -9,20 +11,26 @@ use Faravel\Support\Facades\DB;
 
 final class CategoryQueryService
 {
+    /**
+     * Найти категорию по slug.
+     *
+     * @param string $slug Непустой slug.
+     * @pre $slug !== ''.
+     * @side-effects Чтение БД.
+     * @return array<string,mixed>|null
+     */
     public function findCategoryBySlug(string $slug): ?array
     {
         $row = DB::table('categories')->where('slug', '=', $slug)->first();
         return $row ? (array)$row : null;
     }
-/* // deprecated
-    public function findCategoryBySlugOrId(string $slugOrId): ?array
-    {
-        $row = DB::table('categories')->where('slug', '=', $slugOrId)->first();
-        if (!$row) $row = DB::table('categories')->where('id', '=', $slugOrId)->first();
-        return $row ? (array)$row : null;
-    }
-*/
-    /** @return array<int,array{id:string,slug:string,title:string,description:?string}> */
+
+    /**
+     * Список видимых категорий для витрины.
+     *
+     * @param int $limit 1..500.
+     * @return array<int,array{id:string,slug:string,title:string,description:?string}>
+     */
     public function listVisibleCategories(int $limit = 200): array
     {
         $limit = max(1, min(500, $limit));
@@ -48,7 +56,10 @@ final class CategoryQueryService
     }
 
     /**
-     * Топ-теги (хабы) для категории (вход — category_id).
+     * Топ-теги (хабы) для категории (вход — category_id) из tag_stats.
+     *
+     * @param string $categoryId ID категории (UUID, не пустой).
+     * @param int    $limit      1..50.
      * @return array<int,array{
      *   slug:string,title:string,color:string,is_active:int,
      *   topics_count:int,last_activity_at:int,position:?int
@@ -89,7 +100,50 @@ final class CategoryQueryService
                 'topics_count'     => (int)($arr['topics_count'] ?? 0),
                 'last_activity_at' => (int)($arr['last_activity_at'] ?? 0),
                 'position'         => array_key_exists('position', $arr) && $arr['position'] !== null
-                                        ? (int)$arr['position'] : null,
+                    ? (int)$arr['position'] : null,
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Получить список хабов (тегов), привязанных к категории.
+     *
+     * Читает из category_tag → tags. Используется на странице категории для
+     * вывода «пузырьков» с хабами. Поля опираются на миграции:
+     *  - tags.slug, tags.title, tags.color, tags.is_active
+     *  - category_tag.position
+     *
+     * @param string $categoryId ID категории (UUID, не пустой).
+     * @pre $categoryId !== ''.
+     * @side-effects Чтение БД.
+     * @return array<int,array{
+     *   slug:string,title:string,color:string,is_active:int,position:int|null
+     * }>
+     * @throws \Throwable При ошибках БД.
+     * @example $svc->listHubsForCategory($catId);
+     */
+    public function listHubsForCategory(string $categoryId): array
+    {
+        $rows = DB::table('category_tag AS ct')
+            ->join('tags AS t', 't.id', '=', 'ct.tag_id')
+            ->select(['t.slug', 't.title', 't.color', 't.is_active', 'ct.position'])
+            ->where('ct.category_id', '=', $categoryId)
+            ->orderBy('(ct.position IS NULL)', 'ASC')
+            ->orderBy('ct.position', 'ASC')
+            ->orderBy('t.title', 'ASC')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $r) {
+            $arr = (array)$r;
+            $out[] = [
+                'slug'      => (string)($arr['slug'] ?? ''),
+                'title'     => (string)($arr['title'] ?? ''),
+                'color'     => (string)($arr['color'] ?? ''),
+                'is_active' => (int)($arr['is_active'] ?? 0),
+                'position'  => array_key_exists('position', $arr) && $arr['position'] !== null
+                    ? (int)$arr['position'] : null,
             ];
         }
         return $out;

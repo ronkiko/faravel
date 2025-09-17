@@ -6,7 +6,7 @@
     @include('layouts.flash')
 
     <form method="POST" action="/admin/settings" class="card" style="padding:14px;max-width:560px;">
-        <?= csrf_field() ?>
+        <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
 
         <label style="display:block;margin-bottom:8px;">
             <div>Окно (сек)</div>

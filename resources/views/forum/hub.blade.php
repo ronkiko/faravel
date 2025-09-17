@@ -1,8 +1,4 @@
-<!-- v0.4.1 -->
-{{-- resources/views/forum/hub.blade.php — v0.4.1
-Назначение: страница хаба (тега). Строгий режим: только {{ }} и @if/@foreach.
-FIX: удалены @php и вызовы функций; все ссылки/форматирование приходят из $vm.
---}}
+<!-- resources/views/forum/hub.blade.php -->
 @extends('layouts.theme')
 
 @push('styles')
@@ -19,20 +15,15 @@ FIX: удалены @php и вызовы функций; все ссылки/ф�
 @endpush
 
 @section('content')
-  <nav class="wrap" aria-label="Хлебные крошки">
-    <a href="/forum">Форум</a> <span class="muted">›</span>
-    <span class="muted">{{ $vm['tag']['title'] }}</span>
-  </nav>
-
   <div class="wrap" style="margin-top:.5rem">
     <a class="pill" href="{{ $vm['links']['sort_last'] }}">Последние</a>
     <a class="pill" href="{{ $vm['links']['sort_new'] }}">Новые</a>
     <a class="pill" href="{{ $vm['links']['sort_posts'] }}">По постам</a>
   </div>
 
-  @if (!empty($vm['topics']))
+  @if($vm['has_topics'])
     <div class="items wrap">
-      @foreach ($vm['topics'] as $t)
+      @foreach($vm['topics'] as $t)
         <article class="row">
           <a href="{{ $t['url'] }}">{{ $t['title'] }}</a>
           <div class="muted">Постов: {{ $t['posts_count'] }} · Активность: {{ $t['when'] }}</div>
@@ -43,13 +34,13 @@ FIX: удалены @php и вызовы функций; все ссылки/ф�
     <div class="wrap muted" style="margin-top:.75rem">Тем пока нет.</div>
   @endif
 
-  @if (($vm['pager']['pages'] ?? 1) > 1)
+  @if($vm['pager']['has_pages'])
     <nav class="wrap pag" aria-label="Навигация страниц">
-      @if (!empty($vm['links']['prev']))
+      @if($vm['pager']['has_prev'])
         <a class="pill" href="{{ $vm['links']['prev'] }}">← Назад</a>
       @endif
       <span class="muted">Стр. {{ $vm['pager']['page'] }} из {{ $vm['pager']['pages'] }}</span>
-      @if (!empty($vm['links']['next']))
+      @if($vm['pager']['has_next'])
         <a class="pill" href="{{ $vm['links']['next'] }}">Вперёд →</a>
       @endif
     </nav>

@@ -47,9 +47,13 @@ function admin_resolve_key(): string
         return $v !== false ? trim((string)$v) : null;
     };
 
-    $key = $svc('SERVICEMODE_KEY') ?? '';
+    // Prioritise ADMIN_KEY over SERVICEMODE_KEY.  The SafeMode admin now
+    // expects the primary secret to come from the ADMIN_KEY variable,
+    // matching docker-compose defaults.  SERVICEMODE_KEY remains as
+    // fallback for backward compatibility.  Both variables are trimmed.
+    $key = $svc('ADMIN_KEY') ?? '';
     if ($key === '') {
-        $key = $svc('ADMIN_KEY') ?? '';
+        $key = $svc('SERVICEMODE_KEY') ?? '';
     }
     return $key;
 }
@@ -222,7 +226,7 @@ function admin_render_login(bool $hasKey, ?string $error = null): void
     if (!$hasKey) {
         admin_alert(
             'error',
-            'Ключ админки не задан. Установите SERVICEMODE_KEY или ADMIN_KEY в .env/ENV.'
+            'Ключ админки не задан. Установите ADMIN_KEY (или для совместимости SERVICEMODE_KEY) в .env/ENV.'
         );
         echo '<p class="muted">Доступ запрещён до задания ключа.</p>';
     } else {

@@ -1,13 +1,16 @@
-<?php // v0.4.1
+<?php // v0.4.2
 /* app/Providers/RoutingServiceProvider.php
 Назначение: провайдер маршрутизации Faravel; регистрирует Router в DI-контейнере.
-FIX: новый провайдер — добавлен singleton-биндинг для Faravel\Routing\Router.
+FIX: Добавлено отладочное логирование [ROUTING.PROVIDER.REGISTER] через
+     Logger::log(). Теперь можно увидеть момент регистрации Router в
+     контейнере в debug.log при включённом отладочном режиме.
 */
 
 namespace App\Providers;
 
 use Faravel\Foundation\ServiceProvider;
 use Faravel\Routing\Router;
+use App\Support\Logger;
 
 final class RoutingServiceProvider extends ServiceProvider
 {
@@ -25,6 +28,8 @@ final class RoutingServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Log registration
+        Logger::log('ROUTING.PROVIDER.REGISTER', 'Loaded OK');
         $this->app->singleton(Router::class, fn () => new Router());
         // По желанию можно добавить псевдоним-строку:
         // $this->app->singleton('router', fn () => $this->app->make(Router::class));

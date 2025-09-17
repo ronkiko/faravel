@@ -9,6 +9,8 @@ namespace App\Providers;
 
 use Faravel\Foundation\ServiceProvider;
 
+use App\Support\Logger;
+
 final class AuthContainerServiceProvider extends ServiceProvider
 {
     /**
@@ -18,6 +20,8 @@ final class AuthContainerServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
         // no-op
     }
 
@@ -28,6 +32,8 @@ final class AuthContainerServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // no-op
     }
 }

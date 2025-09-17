@@ -5,6 +5,8 @@ namespace App\Providers;
 use Faravel\Events\Dispatcher;
 use Faravel\Foundation\ServiceProvider;
 
+use App\Support\Logger;
+
 /**
  * Сервис‑провайдер для событий. Регистрирует диспетчер событий
  * и позволяет добавлять слушателей в boot().
@@ -13,6 +15,9 @@ class EventServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
+
         $this->app->singleton('events', function () {
             return new Dispatcher();
         });
@@ -24,6 +29,9 @@ class EventServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
+
         // Здесь можно регистрировать слушателей для событий, например:
         // Event::listen('user.registered', function ($user) {
         //     // отправить приветственное письмо

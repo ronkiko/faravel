@@ -1,10 +1,11 @@
-<?php // v0.4.2
+<?php // v0.4.108
 /* app/Http/Kernel.php
 Purpose: HTTP kernel that builds the middleware pipeline and dispatches requests to the
          router. The middleware list is taken strictly from the container, published by
          the HttpMiddlewareServiceProvider (single source of truth).
-FIX: Removed any config reads and all fallbacks. Kernel now requires that the provider
-     publishes 'http.middleware.global' and throws descriptive errors if missing/invalid.
+FIX: Enhanced error logging: now logs the exception class, message, file, line and
+     the request method/path to aid debugging. Updated version header to v0.4.108.
+     Retained tab‑separated log format for readability.
 */
 
 namespace App\Http;
@@ -15,6 +16,7 @@ use Faravel\Http\Response;
 use Faravel\Http\Middleware\MiddlewareInterface;
 use Faravel\Routing\Router;
 use Faravel\Exceptions\MethodNotAllowedException;
+use App\Support\Logger;
 
 final class Kernel
 {
@@ -78,6 +80,8 @@ final class Kernel
      */
     public function handle(): Response
     {
+        // Log beginning of request handling
+        Logger::log('KERNEL.HANDLE.START', 'Handling request');
         try {
             /** @var Request $request */
             $request = $this->app->make(Request::class);
@@ -112,15 +116,40 @@ final class Kernel
                 );
             }
 
+            // Log successful end
+            Logger::log('KERNEL.HANDLE.END', 'Handled OK');
             return $response;
         } catch (MethodNotAllowedException $e) {
+            // Log specific exception with more detail: include message, location and request context
+            $msg = get_class($e) . "\t" . ($e->getMessage() ?: '') . ' at '
+                 . $e->getFile() . ':' . $e->getLine();
+            // Attempt to append request method and path for clarity
+            try {
+                $req = $this->app->make(Request::class);
+                $msg .= "\tRequest: " . $req->method() . ' ' . $req->path();
+            } catch (\Throwable $ignored) {
+                // ignore if request cannot be resolved
+            }
+            Logger::log('KERNEL.HANDLE.ERROR', $msg);
             return (new Response('Method Not Allowed', 405));
         } catch (\Throwable $e) {
+            // Log generic exceptions with more detail: class, message, file, line and request context
+            $msg = get_class($e) . "\t" . ($e->getMessage() ?: '') . ' at '
+                 . $e->getFile() . ':' . $e->getLine();
+            // Append method and URI if possible to aid debugging
+            try {
+                $req = $this->app->make(Request::class);
+                $msg .= "\tRequest: " . $req->method() . ' ' . $req->path();
+            } catch (\Throwable $ignored) {
+                // ignore if request is unavailable
+            }
+            Logger::log('KERNEL.HANDLE.ERROR', $msg);
             try {
                 /** @var \App\Exceptions\Handler $handler */
                 $handler = $this->app->make(\App\Exceptions\Handler::class);
                 return $handler->handle($e);
             } catch (\Throwable $inner) {
+                // If the exception handler fails, return generic 500
                 return new Response('Internal Server Error', 500);
             }
         }
@@ -137,6 +166,9 @@ final class Kernel
     {
         foreach (array_reverse($this->middleware) as $middlewareClass) {
             $core = function (Request $request) use ($middlewareClass, $core): Response {
+                // Debug: entering middleware
+                Logger::log('MIDDLEWARE', $middlewareClass);
+
                 /** @var MiddlewareInterface $middleware */
                 $middleware = $this->app->make($middlewareClass);
 

@@ -13,6 +13,8 @@ use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
 
+use App\Support\Logger;
+
 /**
  * Провайдер проверяет соответствие ViewModel-ов контракту ArrayBuildable.
  *
@@ -29,6 +31,8 @@ final class ViewModelComplianceServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
         // no-op
     }
 
@@ -41,6 +45,9 @@ final class ViewModelComplianceServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
+
         $dir = dirname(__DIR__) . '/Http/ViewModels';
         if (!is_dir($dir)) {
             // Нет папки — нечего валидировать.

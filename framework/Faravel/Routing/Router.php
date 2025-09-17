@@ -1,9 +1,10 @@
-<?php // v0.4.2
+<?php // v0.4.3
 /* framework/Faravel/Routing/Router.php
-Назначение: регистратор и диспетчер маршрутов Faravel; строит стек route-middleware
+Назначение: регистратор и диспетчер маршрутов Faravel; строит стек route‑middleware
 и выполняет action контроллера.
-FIX: извлечение маршрутных middleware через единый контейнер приложения
-(container()) вместо legacy app()/Container; шапка и PHPDoc приведены к формату.
+FIX: executeAction теперь распаковывает параметры маршрута и передаёт их по
+    отдельности в контроллер/closure (`...$args`). Это устраняет ошибку
+    передачи массива вместо строки (например, для параметра category_slug).
 */
 
 namespace Faravel\Routing;
@@ -11,6 +12,9 @@ namespace Faravel\Routing;
 use Exception;
 use Faravel\Http\Request;
 use Faravel\Http\Response;
+
+// Import logger to trace routing and dispatching.
+use App\Support\Logger;
 
 class Router
 {
@@ -207,9 +211,14 @@ class Router
     public static function dispatch(Request $request): Response
     {
         $method = $request->method();
-        $uri = rtrim($request->path(), '/') ?: '/';
+        $uri    = rtrim($request->path(), '/') ?: '/';
+
+        // Debug: log incoming request
+        Logger::log('ROUTER.DISPATCH', $method . ' ' . $uri);
 
         if (!isset(self::$routes[$method])) {
+            // Debug: no routes registered for this method
+            Logger::log('ROUTER.NOTFOUND', 'No routes registered for ' . $method);
             return self::notFound();
         }
 
@@ -218,6 +227,8 @@ class Router
             $pattern = '#^' . $pattern . '$#';
 
             if (preg_match($pattern, $uri, $matches)) {
+                // Debug: matched route pattern
+                Logger::log('ROUTE.MATCH', $method . ' ' . $routeDef->uri);
                 $params = [];
                 foreach ($matches as $key => $value) {
                     if (!is_int($key)) {
@@ -229,6 +240,8 @@ class Router
             }
         }
 
+        // Debug: no route matched for URI
+        Logger::log('ROUTER.NOTFOUND', 'No route matched for ' . $method . ' ' . $uri);
         return self::notFound();
     }
 
@@ -246,6 +259,8 @@ class Router
         array $params
     ): Response {
         $core = function (Request $req) use ($routeDef, $params): Response {
+            // Debug: about to execute route action
+            Logger::log('ROUTE.RUN', 'Executing route action');
             return self::executeAction($routeDef->action, $req, $params);
         };
 
@@ -279,6 +294,9 @@ class Router
         Request $request,
         array $params
     ): Response {
+        // Normalize route parameters: use values array to match controller signatures.
+        $args = array_values($params);
+
         if (is_array($action)) {
             [$controllerClass, $methodName] = $action;
 
@@ -294,9 +312,15 @@ class Router
                 );
             }
 
-            $response = $controller->$methodName($request, $params);
+            // Debug: executing controller action
+            Logger::log('ACTION.CONTROLLER', $controllerClass . '@' . $methodName);
+            // Pass request and unpacked parameters to the controller method.
+            $response = $controller->$methodName($request, ...$args);
         } elseif (is_callable($action)) {
-            $response = $action($request, $params);
+            // Debug: executing closure action
+            Logger::log('ACTION.CLOSURE', 'Invoking route closure');
+            // Pass request and unpacked parameters to the closure.
+            $response = $action($request, ...$args);
         } else {
             throw new Exception('Invalid route action type.');
         }

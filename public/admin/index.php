@@ -13,6 +13,12 @@ define('ADMIN_ENTRY', 1);
 $root = realpath(__DIR__ . '/../../');
 require_once $root . '/framework/init.php';
 require_once $root . '/framework/helpers.php';
+// Подключаем автолоадер приложения, чтобы модули SafeMode могли находить классы
+// из пространства имён App\ (например, App\Services\Admin\ContractChecker).  В ранних
+// версиях админки загрузка выполнялась без инициализации autoload, что приводило к
+// фатальным ошибкам «Class ... not found».  Этот вызов регистрирует PSR‑4
+// автозагрузчик для App\ и Database\.
+require_once $root . '/app/init.php';
 require_once __DIR__ . '/_helpers.php';
 
 // Старт сессии до любого вывода.
@@ -32,7 +38,7 @@ if (!admin_is_authorized()) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $posted = (string)($_POST['admin_key'] ?? '');
         if ($key === '') {
-            $error = 'Ключ не задан в ENV: SERVICEMODE_KEY или ADMIN_KEY.';
+            $error = 'Ключ не задан в ENV: ADMIN_KEY (или SERVICEMODE_KEY).';
         } elseif (!hash_equals($key, $posted)) {
             $error = 'Неверный ключ.';
         } else {
@@ -47,10 +53,16 @@ if (!admin_is_authorized()) {
 }
 
 // Авторизованы — рисуем каркас и встраиваем выбранный модуль.
+// Список разрешённых страниц SafeMode.  Расширяемый: новые модули
+// подключаются через ключ => файл.  Стандартные модули: home, service, install.
+// Новые модули в v0.4.117: stack — проверка соответствия контрактам;
+// checksum — контроль хеш‑сумм файлов.
 $allowedPages = [
-    'home'    => '_home.php',     // демо-модуль, есть в этом коммите
-    'service' => '_service.php',  // появится на шаге 2
-    'install' => '_install.php',  // появится на шаге 3
+    'home'     => '_home.php',     // демо-модуль
+    'service'  => '_service.php',  // проверка БД
+    'install'  => '_install.php',  // инсталлятор
+    'stack'    => '_stack.php',    // проверка слоёв стека
+    'checksum' => '_checksum.php', // контроль целостности файлов
 ];
 
 // Активная страница
@@ -60,10 +72,13 @@ if (!array_key_exists($page, $allowedPages)) {
 }
 
 // Сборка меню (имя → ссылка)
+// Построение меню (название → ссылка). Новые пункты: проверка стека и контроль файлов.
 $menu = [
-    'Панель'         => 'index.php?page=home',
-    'Проверки БД'    => 'index.php?page=service',
-    'Инсталлятор'    => 'index.php?page=install',
+    'Панель'          => 'index.php?page=home',
+    'Проверки БД'     => 'index.php?page=service',
+    'Инсталлятор'     => 'index.php?page=install',
+    'Проверка стека'  => 'index.php?page=stack',
+    'Контроль файлов' => 'index.php?page=checksum',
 ];
 
 // Рендер каркаса и врезка модуля

@@ -1,11 +1,4 @@
-<!-- v0.4.15 -->
-{{-- resources/views/layouts/xen/theme.blade.php
-Назначение: базовый лейаут темы Xen. Рендерит верхний баннер сайта (site),
-липкий navbar, флеш-сообщения, контент и футер. Строгий «немой» Blade.
-FIX: Переведён с legacy brand.* на обязательный контракт site.*
-(site.logo.url, site.home.url, site.title). DOM сохранён под текущий CSS
-(.xen-brandbar*), чтобы не ломать стили.
---}}
+<!-- v0.4.113 -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -13,6 +6,8 @@ FIX: Переведён с legacy brand.* на обязательный конт
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ $layout['title'] }}</title>
   <link rel="stylesheet" href="/style/index.css">
+
+  @stack('styles')
 </head>
 <body class="xen">
   <header class="xen-header">
@@ -28,7 +23,6 @@ FIX: Переведён с legacy brand.* на обязательный конт
     </div>
   </header>
 
-  {{-- Sticky navbar (данные из LayoutVM/LayoutService) --}}
   @include('layouts.xen.nav', ['layout' => $layout])
 
   <main class="xen-main">

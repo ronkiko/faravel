@@ -1,21 +1,12 @@
-<?php // v0.4.2
+<?php // v0.4.122
 /* app/Http/ViewModels/Forum/ForumIndexPageVM.php
-Purpose: 1) Готовит презентационные данные для /forum/: заголовок, категории, пагинацию.
-         2) Инкапсулирует сборку ссылок (url) для категорий, чтобы Blade шаблон был
-            «тупым» и не конкатенировал строки — это устраняет синтаксическую ошибку.
-FIX: Добавлена нормализация categories (id, slug, title, description, url); toArray()
-     теперь отдаёт ключ 'categories'. Принят legacy-ключ 'forums' на вход.
+Purpose: ViewModel главной страницы форума для строгого Blade. Отдаёт ровно те
+         ключи, которые ждёт шаблон: title, has_categories, categories[{...}].
+FIX: Добавлен 'has_categories'; ссылки категорий нормализованы к /forum/c/{slug}/.
 */
-
 namespace App\Http\ViewModels\Forum;
 
-use App\Contracts\ViewModel\ArrayBuildable;
-
-/**
- * ForumIndexPageVM: presentation-only data for forum index.
- * Controller → Service → VM → View. Никакой бизнес-логики.
- */
-final class ForumIndexPageVM implements ArrayBuildable
+final class ForumIndexPageVM
 {
     /** @var string */
     private string $title = 'Форум';
@@ -37,28 +28,19 @@ final class ForumIndexPageVM implements ArrayBuildable
     private int $total = 0;
 
     /**
-     * Построить VM из массива, который вернул сервис.
-     *
-     * Preconditions:
-     * - $data['categories'] ИЛИ $data['forums'] — массив элементов с ключами
-     *   id, slug, title, description?.
-     * - Допустимы: title (string), page (int>=1), perPage (int>=1), total (int>=0).
-     *
-     * Side effects: нет.
+     * Сборка VM из данных сервиса/репозитория.
      *
      * @param array<string,mixed> $data
+     *   Поддерживаются ключи:
+     *   - title?:string
+     *   - categories?:array<int,array{id:string,slug:string,title:string,description?:string}>
+     *   - forums?:array<int,array{id:string,slug:string,title:string,description?:string}> (legacy)
+     *   - page?:int, perPage?:int, total?:int
+     * Preconditions:
+     *  - id/slug/title должны быть заданы для каждой категории.
+     * Side effects: нет.
      * @return static
-     *
-     * @throws \InvalidArgumentException если отсутствуют id|slug|title у элемента.
-     *
-     * @example
-     *  ForumIndexPageVM::fromArray([
-     *    'title' => 'Форум',
-     *    'categories' => [
-     *      ['id'=>'1','slug'=>'general','title'=>'General','description'=>'...'],
-     *    ],
-     *    'page' => 1, 'perPage' => 20, 'total' => 1
-     *  ]);
+     * @throws \InvalidArgumentException При отсутствии id|slug|title.
      */
     public static function fromArray(array $data): static
     {
@@ -72,8 +54,7 @@ final class ForumIndexPageVM implements ArrayBuildable
         if (isset($data['categories']) && is_array($data['categories'])) {
             $src = $data['categories'];
         } elseif (isset($data['forums']) && is_array($data['forums'])) {
-            // Legacy support: старый ключ 'forums'
-            $src = $data['forums'];
+            $src = $data['forums']; // legacy
         } else {
             $src = [];
         }
@@ -93,15 +74,12 @@ final class ForumIndexPageVM implements ArrayBuildable
                 );
             }
 
-            // VM готовит презентационный URL — View его только печатает.
-            $url = '/forum/c/' . rawurlencode($slug) . '/';
-
             $normalized[] = [
                 'id'          => $id,
                 'slug'        => $slug,
                 'title'       => $title,
                 'description' => $desc,
-                'url'         => $url,
+                'url'         => '/forum/c/' . rawurlencode($slug) . '/',
             ];
         }
         $vm->categories = $normalized;
@@ -120,10 +98,11 @@ final class ForumIndexPageVM implements ArrayBuildable
     }
 
     /**
-     * Экспорт VM в плоский массив для Blade.
+     * Отдать массив для строгого Blade (никаких вычислений в шаблоне).
      *
      * @return array{
      *   title:string,
+     *   has_categories:bool,
      *   categories:array<int,array{
      *     id:string,slug:string,title:string,description:string,url:string
      *   }>,
@@ -133,11 +112,12 @@ final class ForumIndexPageVM implements ArrayBuildable
     public function toArray(): array
     {
         return [
-            'title'       => $this->title,
-            'categories'  => $this->categories,
-            'page'        => $this->page,
-            'perPage'     => $this->perPage,
-            'total'       => $this->total,
+            'title'          => $this->title,
+            'has_categories' => count($this->categories) > 0,
+            'categories'     => $this->categories,
+            'page'           => $this->page,
+            'perPage'        => $this->perPage,
+            'total'          => $this->total,
         ];
     }
 }

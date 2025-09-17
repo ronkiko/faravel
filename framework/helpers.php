@@ -30,27 +30,38 @@ if (!function_exists('request')) {
 
 if (!function_exists('response')) {
     /**
-     * Вернуть фабрику ответа или мгновенно создать Response.
+     * Return HTTP ResponseFactory or create a Response immediately.
      *
-     * @param string $content
-     * @param int    $status
-     * @param array<string,string> $headers
-     * @return \Faravel\Http\Response|\Faravel\Http\ResponseFactory
+     * Calling without $content returns the factory (canonical: response()->view()).
+     * With non-null $content it creates a ready Response.
+     *
+     * @param ?string               $content  Response body or null to get the factory.
+     * @param int                   $status   HTTP status when $content !== null.
+     * @param array<string,string>  $headers  Headers when $content !== null.
+     * @return \Faravel\Http\ResponseFactory|\Faravel\Http\Response
+     * @phpstan-return ($content is null
+     *     ? \Faravel\Http\ResponseFactory
+     *     : \Faravel\Http\Response)
+     * @psalm-return ($content is null
+     *     ? \Faravel\Http\ResponseFactory
+     *     : \Faravel\Http\Response)
      */
-    function response(string $content = '', int $status = 200, array $headers = [])
+    function response(?string $content = null, int $status = 200, array $headers = [])
     {
-        /** @var ResponseFactory $factory */
+        /** @var \Faravel\Http\ResponseFactory $factory */
         static $factory;
 
-        if (!$factory) {
-            /** @var ResponseFactory $factory */
-            $factory = \app(ResponseFactory::class);
+        if ($factory === null) {
+            /** Lazily resolve from container once */
+            $factory = \app(\Faravel\Http\ResponseFactory::class);
         }
 
-        if (func_num_args() === 0) {
+        if ($content === null) {
+            // Canonical path: use the factory (response()->view(), etc.)
             return $factory;
         }
 
+        // Immediate response creation when content is provided.
         return $factory->make($content, $status, $headers);
     }
 }

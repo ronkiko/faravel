@@ -1,139 +1,152 @@
-<?php
-/* app/Http/Controllers/Forum/Pages/ShowTopicAction.php — v0.2.0
-Показ темы. Сбор сырья из БД, построение PostItemVM[], TopicPageVM и передача
-в Blade. Для совместимости до шага 11 отдаёт и «legacy»-поля ($topic,$category,$posts).
-
-FIX: реализованы выборки темы/постов/пилюль, групповой fetch авторов и их метрик,
-canReply через TopicPolicy, returnTo из Request.
+<?php // v0.4.139
+/* app/Http/Controllers/Forum/Pages/ShowTopicAction.php
+Purpose: Показ темы по slug|id. Тонкий контроллер: сервис → VM → view. Подсветку навигации
+         задаём через layout_overrides['nav_active']='forum'.
+FIX: Переименован humanizeAgo → общий App\Support\Format\TimeFormatter::format_time();
+     удалён локальный хелпер. Вызовы обновлены.
 */
+
 namespace App\Http\Controllers\Forum\Pages;
 
 use Faravel\Http\Request;
 use Faravel\Http\Response;
-use Faravel\Support\Facades\DB;
 use Faravel\Support\Facades\Auth;
+use App\Services\Forum\TopicQueryService;
+use App\Http\ViewModels\Layout\FlashVM;
 use App\Policies\Forum\TopicPolicy;
 use App\Http\ViewModels\Forum\PostItemVM;
 use App\Http\ViewModels\Forum\TopicPageVM;
+use App\Support\Format\TimeFormatter;
 
-class ShowTopicAction
+final class ShowTopicAction
 {
-    public function __invoke(Request $request, ?string $tagId = null, string $topicId = ''): Response
+    /**
+     * Показ страницы темы.
+     *
+     * Controller → Service → VM → View: контроллер координирует, бизнес-логики нет.
+     *
+     * @param Request $request   Текущий HTTP-запрос.
+     * @param string  $topic_slug Слаг или ID темы; непустой.
+     * @pre $topic_slug !== ''.
+     * @side-effects Чтение БД (TopicQueryService); чтение сессии (FlashVM).
+     * @return Response HTML 200 или 404 при отсутствии темы.
+     * @throws \Throwable Ошибки сервисов/рендера пробрасываются.
+     * @example GET /forum/t/ustanovka-arch-linux/
+     */
+    public function __invoke(Request $request, string $topic_slug): Response
     {
-        // 1) Тема
-        $topic = DB::table('topics')->where('id', '=', $topicId)->first();
+        $svc   = new TopicQueryService();
+
+        /** @var array<string,mixed>|null $topic */
+        $topic = $svc->findTopicBySlugOrId($topic_slug);
         if (!$topic) {
             return response()->view('errors.404', [], 404);
         }
-        $topic = (array)$topic;
 
-        // 2) Категория
-        $category = null;
-        if (!empty($topic['category_id'])) {
-            $category = DB::table('categories')->select(['id','title'])->where('id','=',$topic['category_id'])->first();
-            $category = $category ? (array)$category : null;
+        /** @var array<string,mixed> $topic */
+        $topicId  = (string) $topic['id'];
+        $category = $svc->findCategoryLight((string) ($topic['category_id'] ?? ''));
+        $postsRaw = $svc->listPosts($topicId, 100);
+
+        // Сопутствующие данные к постам.
+        $uids        = $svc->pluckUserIds($postsRaw);
+        $usersById   = $svc->fetchByIds('users', 'id', $uids, ['id', 'username', 'group_id']);
+        $gids        = $svc->pluckGroupIds($usersById);
+        $groupsById  = $svc->fetchByIds('groups', 'id', $gids, ['id', 'name']);
+        $groupLabels = [];
+        foreach ($groupsById as $gid => $g) {
+            $groupLabels[(int) $gid] = (string) ($g['name'] ?? ('group ' . (int) $gid));
         }
+        $postsCountByUser = $svc->countPostsByUserFromArray($postsRaw);
+        $tagPills         = $svc->listTagsForTopic($topicId);
 
-        // 3) Посты темы (сырые, для Legacy-рендера)
-        $postsRaw = DB::table('posts')
-            ->where('topic_id','=',$topicId)
-            ->where('is_deleted','=',0)
-            ->orderBy('created_at','asc')
-            ->get();
-        $postsRaw = array_map(fn($r)=>(array)$r, $postsRaw ?? []);
-
-        // 4) Авторы одним пакетом
-        $uids = array_values(array_unique(array_filter(array_map(fn($p)=> (string)($p['user_id'] ?? ''), $postsRaw))));
-        $users = [];
-        if ($uids) {
-            $rows = DB::table('users')->whereIn('id', $uids)->get();
-            foreach ($rows as $r) $users[(string)$r->id] = (array)$r;
-        }
-
-        // 5) Лейблы групп
-        $groups = [];
-        if ($users) {
-            $gids = array_values(array_unique(array_filter(array_map(fn($u)=> (int)($u['group_id'] ?? 0), $users))));
-            if ($gids) {
-                $gr = DB::table('groups')->whereIn('id',$gids)->get();
-                foreach ($gr as $g) $groups[(int)$g->id] = (string)($g->name ?? 'group '.$g->id);
-            }
-        }
-
-        // 6) Кол-во постов по авторам
-        $postsCountByUser = [];
-        if ($uids) {
-            $cnt = DB::table('posts')->selectRaw('user_id, COUNT(*) AS c')->whereIn('user_id',$uids)->groupBy('user_id')->get();
-            foreach ($cnt as $r) $postsCountByUser[(string)$r->user_id] = (int)$r->c;
-        }
-
-        // 7) Пилюли тегов темы
-        $tagPills = [];
-        $tagRows = DB::table('taggables as tg')
-            ->join('tags as t','t.id','=','tg.tag_id')
-            ->select(['t.slug','t.title','t.color','t.is_active'])
-            ->where('tg.entity','=','topic')
-            ->where('tg.entity_id','=',$topicId)
-            ->orderBy('t.title','asc')
-            ->get();
-        foreach ($tagRows as $r) {
-            $tagPills[] = [
-                'slug'      => (string)$r->slug,
-                'title'     => (string)$r->title,
-                'color'     => (string)($r->color ?? ''),
-                'is_active' => (int)$r->is_active,
-            ];
-        }
-
-        // 8) ViewModel постов
-        $now = time();
-        $postVMs = [];
+        // PostItemVM → массивы для Blade.
+        $now          = time();
+        $postVMsArray = [];
         foreach ($postsRaw as $p) {
-            $uid = (string)($p['user_id'] ?? '');
-            $u   = $users[$uid] ?? [];
-            if ($u) {
-                $u['group_label'] = $groups[(int)($u['group_id'] ?? 0)] ?? ('Группа '.(int)($u['group_id'] ?? 0));
-            }
-            $postVMs[] = PostItemVM::fromRaw($p, $u, [
-                'posts_count'   => $postsCountByUser[$uid] ?? 0,
-                'base_url_user' => '/u',
-                'now_ts'        => $now,
-            ]);
+            $uid = (string) ($p['user_id'] ?? '');
+            $u   = (array) ($usersById[$uid] ?? []);
+            $gid = (int) ($u['group_id'] ?? 0);
+
+            $postVMsArray[] = PostItemVM::fromArray([
+                'id'          => (string) ($p['id'] ?? ''),
+                'content'     => (string) ($p['content'] ?? ''),
+                'created_at'  => (int) ($p['created_at'] ?? 0),
+                'created_ago' => TimeFormatter::humanize((int) ($p['created_at'] ?? 0), $now),
+                'user'        => [
+                    'id'          => (string) $uid,
+                    'username'    => (string) ($u['username'] ?? 'user'),
+                    'group_label' => (string) ($groupLabels[$gid] ?? 'member'),
+                    'posts_count' => (int) ($postsCountByUser[$uid] ?? 0),
+                ],
+            ])->toArray();
         }
 
-        // 9) Политика: можно ли отвечать
-        $auth = Auth::user();
-        $userLite = is_array($auth) ? $auth : (is_object($auth) ? (array)$auth : null);
-        $canReply = (new TopicPolicy())->canReply($userLite, $topic);
+        // Политика + фолбэк на факт входа.
+        $auth       = Auth::user();
+        $userLite   = is_array($auth) ? $auth : (is_object($auth) ? (array) $auth : null);
+        $canByPol   = (new TopicPolicy())->canReply($userLite, $topic);
+        $isLoggedIn = is_array($userLite) && isset($userLite['id']) && (string) $userLite['id'] !== '';
+        $canReply   = (bool) ($canByPol || $isLoggedIn);
 
-        // 10) returnTo
-        $returnTo = (string)($request->server('REQUEST_URI') ?? '/forum');
+        $catSlug  = (string) ($category['slug'] ?? '');
+        $replyUrl = '/forum/t/' . rawurlencode((string) ($topic['slug'] ?? $topicId)) . '/reply';
 
-        // 11) TopicPageVM
-        $vm = TopicPageVM::from(
-            base: [], // базовые поля уже шарятся компоузером
-            topic: $topic,
-            postsVm: $postVMs,
-            tagPills: $tagPills,
-            canReply: $canReply,
-            returnTo: $returnTo
-        );
+        $vm = TopicPageVM::fromArray([
+            'topic' => [
+                'id'             => $topicId,
+                'slug'           => (string) ($topic['slug'] ?? $topicId),
+                'title'          => (string) $topic['title'],
+                'category_slug'  => $catSlug,
+                'category_title' => (string) ($category['title'] ?? ''),
+            ],
+            'posts'       => $postVMsArray,
+            'pagination'  => [
+                'page'      => 1,
+                'per_page'  => max(1, count($postVMsArray)),
+                'total'     => (int) count($postVMsArray),
+                'last_page' => 1,
+            ],
+            'abilities'   => ['can_reply' => $canReply],
+            'can_reply'   => $canReply,
+            'links'       => ['reply' => $replyUrl],
+            'breadcrumbs' => [
+                ['title' => 'Форум', 'url' => '/forum'],
+                [
+                    'title' => (string) ($category['title'] ?? ''),
+                    'url'   => $catSlug !== '' ? '/forum/c/' . rawurlencode($catSlug) . '/' : '/forum',
+                ],
+                ['title' => (string) $topic['title'], 'url' => ''],
+            ],
+            'meta' => [
+                'return_to' => (string) ($request->server('REQUEST_URI') ?? '/forum'),
+                'tags'      => $tagPills,
+            ],
+        ]);
 
-        // 12) Совместимость со старым Blade (до шага 11)
-        $viewData = [
-            // Legacy:
-            'topic'      => $topic,
-            'category'   => $category,
-            'posts'      => $postsRaw,
-            'tagPills'   => $tagPills,
-            'canReply'   => $canReply,
-            'content'    => (string)($request->old('content') ?? ''),
-            'warning'    => (string)(session()->get('error') ?? ''),
-            // Новое:
-            'vm'         => $vm->toArray(),
-            'postStyle'  => 'classic',
-        ];
+        $flash = FlashVM::fromSession($request->session())->toArray();
 
-        return response()->view('forum.topic', $viewData);
+        // DEBUG
+        /* 
+        die(debug([
+            'vm'               => $vm->toArray(),
+            'postStyle'        => 'classic',
+            'layout_overrides' => [
+                'title'      => 'Тема: ' . (string) $topic['title'],
+                'nav_active' => 'forum',
+            ],
+            'flash'            => $flash,
+        ]));
+        */
+
+        return response()->view('forum.topic', [
+            'vm'               => $vm->toArray(),
+            'postStyle'        => 'classic',
+            'layout_overrides' => [
+                'title'      => 'Тема: ' . (string) $topic['title'],
+                'nav_active' => 'forum',
+            ],
+            'flash'            => $flash,
+        ]);
     }
 }

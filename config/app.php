@@ -2,8 +2,21 @@
 
 return [
     'name'    => 'Faravel',
-    'version' => '0.4.91',
-    'debug'   => false,
+    // Current project version. Bumped on each patch.
+    // Application version. Incremented with each patch.
+    // Application version. Incremented with each patch.
+    // Update: bumped version to 0.4.122. В этой версии: фиксы строгого VM вызова
+    // в ShowTopicAction и регистрация прикладных абилок. См. CHANGELOG.
+    'version' => '0.4.122',
+    // Debug mode enabled: write log entries to storage/logs/debug.log for tracing requests.
+    'debug'   => true,
+
+    // ==== Auth options ====
+    'auth' => [
+        // TTL для кэширования записи пользователя в AuthService::user(), сек.
+        // Короткий TTL исключает рассинхронизацию и уменьшает нагрузку на БД.
+        'user_cache_ttl' => 60,
+    ],
 
     /*
      * Provider boot order matters:
@@ -39,6 +52,9 @@ return [
         // Views/UI
         App\Providers\ViewServiceProvider::class,
         App\Providers\ForumViewServiceProvider::class,
+
+        // Core application bindings (Request, ResponseFactory, layout service, etc.)
+        App\Providers\AppServiceProvider::class,
 
         // Routing + HTTP middleware wiring
         App\Providers\RoutingServiceProvider::class,

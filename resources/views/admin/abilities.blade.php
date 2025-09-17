@@ -203,7 +203,7 @@
                               </a>
                               <form method="POST" action="/admin/abilities/<?= (int)($it['id'] ?? 0) ?>/delete" class="inline-form"
                                     onsubmit="return confirm('Удалить ability?');">
-                                <?= csrf_field() ?>
+                                <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
                                 <button class="icon-btn icon-btn--danger" type="submit" title="Удалить">
                                   <span class="icon" aria-hidden="true">🗑</span>
                                 </button>
@@ -227,7 +227,7 @@
       <section id="p-create" class="panel">
         <div class="form-card">
           <form class="form" method="POST" action="/admin/abilities">
-            <?= csrf_field() ?>
+            <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
             <div class="form-grid">
               <div class="group">
                 <label for="a-name">Name*</label>
@@ -281,7 +281,7 @@
             </a>
             <form method="POST" action="/admin/abilities/<?= $aid ?>/delete" class="inline-form"
                   onsubmit="return confirm('Удалить ability?');">
-              <?= csrf_field() ?>
+              <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
               <button class="button button--danger" type="submit">
                 <span class="icon" aria-hidden="true">🗑</span><span>Удалить</span>
               </button>
@@ -290,7 +290,7 @@
 
           <div class="form-card">
             <form class="form" method="POST" action="/admin/abilities/<?= $aid ?>">
-              <?= csrf_field() ?>
+              <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
               <div class="form-grid">
                 <div class="group">
                   <label for="e-name">Name*</label>

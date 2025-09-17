@@ -176,10 +176,6 @@ class QueryBuilder
      * Lightweight and fast: SELECT 1 ... LIMIT 1 (with all WHERE/JOIN parts).
      * Restores previous select/limit so the builder can be reused.
      *
-     * Preconditions:
-     * - Query may contain any WHERE/JOIN; ORDER/LIMIT are allowed.
-     * Side effects: none (besides executing a read-only statement).
-     *
      * @return bool
      */
     public function exists(): bool
@@ -367,5 +363,47 @@ class QueryBuilder
         }
         $stmt->execute();
         return $stmt;
+    }
+
+    /**
+     * MAX(column) с учётом текущих JOIN/WHERE.
+     *
+     * Сохраняет и затем восстанавливает select/order/limit/offset,
+     * чтобы билдер можно было переиспользовать.
+     *
+     * @param string $column
+     * @return int|float|string|null
+     */
+    public function max(string $column)
+    {
+        // лёгкая санитария имени поля (в духе остального билдера всё равно raw)
+        $col = preg_replace('/[^A-Za-z0-9_\.\*]/', '', $column) ?: '*';
+
+        $prevSelect = $this->select;
+        $prevOrder  = $this->orderBys;
+        $prevLimit  = $this->limit;
+        $prevOffset = $this->offset;
+
+        // агрегат не нуждается в ORDER/LIMIT/OFFSET
+        $this->select   = ["MAX({$col})"];
+        $this->orderBys = [];
+        $this->limit    = null;
+        $this->offset   = null;
+
+        [$sql, $bindings] = $this->compileSelect(false);
+
+        // восстановить состояние билдера
+        $this->select   = $prevSelect;
+        $this->orderBys = $prevOrder;
+        $this->limit    = $prevLimit;
+        $this->offset   = $prevOffset;
+
+        $stmt = $this->execute($sql, $bindings);
+        $val  = $stmt->fetchColumn();
+
+        if ($val === false) {
+            return null;
+        }
+        return is_numeric($val) ? $val + 0 : $val;
     }
 }

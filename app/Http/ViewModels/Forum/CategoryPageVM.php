@@ -1,117 +1,79 @@
 <?php // v0.4.3
 /* app/Http/ViewModels/Forum/CategoryPageVM.php
-Purpose: ViewModel for a category page (category header + list of forums/topics + pagination).
-FIX: `fromArray()` return type changed to `static`; added safe property-bag and normalization of
-     common fields (category, items, pagination).
+Purpose: ViewModel страницы категории: нормализует данные под строгий Blade (флаги, список
+         хабов) и предоставляет meta (title, breadcrumbs) без логики во Blade.
+FIX: Добавлены meta.has_breadcrumbs и флаги у элементов крошек (sep_before, has_url) для
+     строгого рендера в layouts.theme без @php/@endphp.
 */
 namespace App\Http\ViewModels\Forum;
 
-use App\Contracts\ViewModel\ArrayBuildable;
-
-/**
- * Category page ViewModel.
- * Pure data container for Views; no business logic or DB queries here.
- */
-final class CategoryPageVM implements ArrayBuildable
+final class CategoryPageVM
 {
     /** @var array<string,mixed> */
-    private array $data;
+    private array $data = [];
 
     /**
-     * @param array<string,mixed> $data Prepared category and items data.
+     * Фабрика VM из структур контроллера/сервиса.
+     *
+     * Ожидает:
+     * - category: array{id?:string,slug?:string,title?:string,description?:string}
+     * - hubs: array<int,array{slug:string,title:string,color?:string,is_active?:int,position?:int|null}>
+     *
+     * @param array<string,mixed> $in
+     * @return self
      */
-    private function __construct(array $data)
+    public static function fromArray(array $in): self
     {
-        $this->data = $data;
-    }
+        $vm = new self();
 
-    /**
-     * Build CategoryPageVM from service-provided array.
-     *
-     * Preconditions:
-     * - $data['category'] is an array with at least id:string and title:string.
-     * - $data['items'] is an array (forums or topics prepared by service).
-     *
-     * Side effects: None.
-     *
-     * @param array<string,mixed> $data
-     * @return static
-     *
-     * @throws \InvalidArgumentException When category is missing or invalid.
-     * @example
-     *  $vm = CategoryPageVM::fromArray([
-     *    'category' => ['id'=>'c1','slug'=>'general','title'=>'General'],
-     *    'items' => [],
-     *    'pagination' => ['page'=>1,'per_page'=>20,'total'=>12,'last_page'=>1],
-     *  ]);
-     */
-    public static function fromArray(array $data): static
-    {
-        $category = is_array($data['category'] ?? null) ? (array)$data['category'] : null;
-        if (!$category || ($category['id'] ?? '') === '' || ($category['title'] ?? '') === '') {
-            throw new \InvalidArgumentException('CategoryPageVM requires valid category data.');
+        $cat      = (array)($in['category'] ?? []);
+        $slug     = (string)($cat['slug'] ?? '');
+        $title    = (string)($cat['title'] ?? $slug);
+        $desc     = (string)($cat['description'] ?? '');
+        $descTrim = trim($desc);
+
+        $hubsIn = (array)($in['hubs'] ?? []);
+        $hubs   = [];
+        foreach ($hubsIn as $h) {
+            $a      = (array)$h;
+            $hSlug  = (string)($a['slug'] ?? '');
+            $active = (int)($a['is_active'] ?? 1);
+            $hubs[] = [
+                'title'     => (string)($a['title'] ?? $hSlug),
+                'url'       => '/forum/f/' . $hSlug . '/',
+                'css_class' => 'f-hub' . ($active ? '' : ' f-hub--muted'),
+            ];
         }
 
-        $normalized = [
-            'category'   => $category,
-            'items'      => is_array($data['items'] ?? null) ? (array)$data['items'] : [],
-            'pagination' => self::normalizePagination($data['pagination'] ?? []),
-            'meta'       => is_array($data['meta'] ?? null) ? (array)$data['meta'] : [],
+        $vm->data = [
+            'meta' => [
+                'title'           => 'Категория: ' . $title,
+                'has_breadcrumbs' => 1,
+                'breadcrumbs'     => [
+                    ['label' => 'Форум', 'url' => '/forum/', 'has_url' => 1, 'sep_before' => 0],
+                    ['label' => $title,  'url' => '',        'has_url' => 0, 'sep_before' => 1],
+                ],
+            ],
+            'category' => [
+                'slug'            => $slug,
+                'title'           => $title,
+                'description'     => $desc,
+                'has_description' => ($descTrim !== '') ? 1 : 0,
+            ],
+            'has_hubs' => !empty($hubs) ? 1 : 0,
+            'hubs'     => $hubs,
         ];
 
-        // Preserve extras.
-        foreach ($data as $k => $v) {
-            if (!array_key_exists($k, $normalized)) {
-                $normalized[$k] = $v;
-            }
-        }
-
-        return new static($normalized);
+        return $vm;
     }
 
     /**
-     * Normalize pagination into a fixed array shape.
+     * Отдать данные для Blade.
      *
-     * @param array<string,mixed> $p
-     * @return array{page:int,per_page:int,total:int,last_page:int}
-     */
-    private static function normalizePagination(array $p): array
-    {
-        $page     = max(1, (int)($p['page'] ?? 1));
-        $perPage  = max(1, (int)($p['per_page'] ?? 20));
-        $total    = max(0, (int)($p['total'] ?? 0));
-        $lastPage = (int)max(1, $p['last_page'] ?? (int)ceil($total / max(1, $perPage)));
-
-        return [
-            'page'      => $page,
-            'per_page'  => $perPage,
-            'total'     => $total,
-            'last_page' => $lastPage,
-        ];
-    }
-
-    /**
-     * Expose underlying data as array.
      * @return array<string,mixed>
      */
     public function toArray(): array
     {
         return $this->data;
-    }
-
-    /**
-     * Safe property-bag access for flexible templates.
-     *
-     * @param string $name
-     * @return mixed
-     */
-    public function __get(string $name)
-    {
-        return $this->data[$name] ?? null;
-    }
-
-    public function __isset(string $name): bool
-    {
-        return array_key_exists($name, $this->data);
     }
 }

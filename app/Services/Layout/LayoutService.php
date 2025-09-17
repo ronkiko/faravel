@@ -1,68 +1,39 @@
-<?php // v0.4.4
+<?php // v0.4.124
 /* app/Services/Layout/LayoutService.php
-Purpose: Assemble LayoutVM (site/nav/locale/title) for thin controllers and
-         strict Blade views.
-FIX: Без функциональных изменений; комментарии и контракт уточнены под итоговый
-     формат site.*. Алиас brand.* более не используется (удалён из VM).
+Purpose: Сборка $layout для строгого Blade: site/nav/title/locale, ссылки и флаги
+         видимости пунктов навигации. Контроллеры передают только overrides.
+FIX: Вынесен общий CSRF-токен на верхний уровень layout.csrf (один на страницу),
+     чтобы любые формы могли использовать его без директив и хелперов в Blade.
+     Источник пользователя — Auth::user(); legacy-ключи исключены.
 */
 namespace App\Services\Layout;
 
 use Faravel\Http\Request;
 use App\Http\ViewModels\Layout\LayoutVM;
+use Faravel\Support\Facades\Auth;
 
 final class LayoutService
 {
     /**
-     * Build LayoutVM for any page.
-     *
-     * Preconditions:
-     * - Request/session are available for auth detection.
-     * - $overrides may include:
-     *     title:string,
-     *     nav_active:string,
-     *     site: array{
-     *       title?:string,
-     *       logo?:array{url?:string},
-     *       home?:array{url?:string}
-     *     }
-     *
-     * Side effects: reads session keys to detect auth user (auth.user|authUser|user).
-     *
-     * @param Request $request
-     * @param array<string,mixed> $overrides
+     * @param Request             $request   Текущий запрос (для унификации сигнатур).
+     * @param array<string,mixed> $overrides Переопределения полей лейаута.
      * @return LayoutVM
-     * @throws \InvalidArgumentException On invalid override types.
-     * @example
-     *  $vm = $this->build($req, [
-     *    'title'=>'Login',
-     *    'nav_active'=>'login',
-     *    'site'=>[
-     *      'title'=>'FARAVEL',
-     *      'logo'=>['url'=>'/style/logo.png'],
-     *      'home'=>['url'=>'/']
-     *    ]
-     *  ]);
      */
     public function build(Request $request, array $overrides = []): LayoutVM
     {
-        $s = $request->session();
-
-        // 1) Detect user
-        $usr = $s->get('auth.user');
-        if (!is_array($usr)) {
-            $u2  = $s->get('authUser');
-            $usr = is_array($u2) ? $u2 : $s->get('user');
-            if (!is_array($usr)) {
-                $usr = null;
-            }
-        }
+        // 1) Current user via Auth service (canonical source of truth)
+        /** @var array<string,mixed>|null $usr */
+        $usr = Auth::user();
         $isAuth  = is_array($usr);
-        $isAdmin = $isAuth && !empty($usr['is_admin']);
+        // Faravel role levels: 6+ admin; 3..5 moderator/dev
+        $roleId  = $isAuth ? (int)($usr['role_id'] ?? 0) : 0;
+        $isAdmin = $isAuth && $roleId >= 6;
+        $isModer = $isAuth && $roleId >= 3 && $roleId < 6;
 
         // 2) Title
         $title = isset($overrides['title']) ? (string)$overrides['title'] : 'Faravel';
 
-        // 3) site.* (stable defaults)
+        // 3) site.* (stable defaults, overridable)
         $so = (array)($overrides['site'] ?? []);
         $site = [
             'title' => isset($so['title']) ? (string)$so['title'] : 'FARAVEL',
@@ -91,24 +62,34 @@ final class LayoutService
             'register' => '/register',
         ];
 
+        // Admin/Mod links by role; logout for authenticated users
         if ($isAdmin) {
             $links['admin'] = '/admin';
+        }
+        if ($isModer || $isAdmin) {
+            $links['mod'] = '/mod';
         }
         if ($isAuth) {
             $links['logout'] = '/logout';
         }
 
-        // 5) Build VM
+        // 5) Build VM (explicit flags + shared CSRF for all page forms)
         return LayoutVM::fromArray([
             'locale' => 'ru',
             'title'  => $title,
+            'csrf'   => (string) csrf_token(),
             'site'   => $site,
             'nav'    => [
                 'active' => $navActive,
                 'links'  => $links,
+                'show'   => [
+                    'admin' => $isAdmin,
+                    'mod'   => ($isModer || $isAdmin),
+                ],
                 'auth'   => [
                     'is_auth'  => $isAuth,
                     'is_admin' => $isAdmin,
+                    // Keep username for header widgets (safe subset).
                     'username' => $isAuth ? (string)($usr['username'] ?? '') : '',
                 ],
             ],

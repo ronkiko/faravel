@@ -145,12 +145,12 @@ $sigRaw   = (string)($p['signature'] ?? '');
       <!-- Действия -->
       <div class="actions">
         <form method="POST" action="/logout">
-          <?= csrf_field() ?>
+          <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
           <button type="submit" class="btn">Выйти</button>
         </form>
 
         <form method="POST" action="/profile/edit">
-          <?= csrf_field() ?>
+          <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
           <input type="hidden" name="user_id" value="<?= htmlspecialchars((string)($u['id'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
           <button type="submit" class="btn">Редактирование</button>
         </form>

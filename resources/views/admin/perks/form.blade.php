@@ -52,7 +52,7 @@
     <?php endif; ?>
 
     <form class="form" method="POST" action="<?= htmlspecialchars($action, ENT_QUOTES, 'UTF-8') ?>">
-      <input type="hidden" name="_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+      <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
 
       <div class="group">
         <label for="f-key">Key (уникальное)</label>

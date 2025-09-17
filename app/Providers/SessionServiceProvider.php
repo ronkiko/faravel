@@ -11,6 +11,8 @@ namespace App\Providers;
 use Faravel\Foundation\ServiceProvider;
 use Faravel\Http\Session;
 
+use App\Support\Logger;
+
 final class SessionServiceProvider extends ServiceProvider
 {
     /**
@@ -23,6 +25,9 @@ final class SessionServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
+
         if (!isset($this->app[Session::class])) {
             $this->app->singleton(Session::class, static fn () => new Session());
         }
@@ -35,6 +40,8 @@ final class SessionServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // Пусто: запуск сессии делает SessionMiddleware.
     }
 }

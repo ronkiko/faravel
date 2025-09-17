@@ -1,47 +1,9 @@
-<!-- docs/forum-contracts.md v0.1.0
-Спецификация контрактов данных для страниц форума. Единые поля, инварианты,
-правила эволюции контрактов.
-FIX: добавлен базовый перечень контрактов. -->
-
-# Контракты данных
-
-## BasePageContract
-```json
-{
-  "user": {"id":"...", "username":"...", "group_id":1, "role_id":6},
-  "abilities": {"forum.post.create": true, "forum.post.edit.own": true},
-  "nav": {"categories": [...], "hubsTop": [...]},
-  "flash": {"error": null, "success": null}
-}
-
-## TopicPageContract
-
-{
-  "topic": {"id":"...","category_id":"...","title":"...","slug":"...","posts_count":2,"last_post_at":1756},
-  "posts": [PostItemVM],
-  "tagPills": [{"slug":"linux","title":"Linux","color":"E1F5FE"}],
-  "canReply": true,
-  "returnTo": "/forum/h/{tagId}/t/{topicId}"
-}
-
-## PostItemVM
-
-{
-  "id":"...","content_html":"<p>...</p>","created_iso":"2025-08-24T06:00:00Z",
-  "author":{"id":"...","name":"...","avatar_url":"/avatars/..png","group_label":"member"},
-  "metrics":{"rep":0,"posts":10,"tenure_days":123},
-  "badge":{"lv":3,"color_hex":"#0ea5e9","bar_bg":"#...","bar_end":"#...","border":"#..."}
-}
-
-## Инварианты
-
-    flash не влияет на canReply.
-
-    returnTo всегда задан для страниц с формой.
-
-<!-- docs/forum-contracts.md v0.2.0
-Контракты данных для страниц форума. Общие типы, инварианты, примеры.
-FIX: добавлены контракты Hub/Category/CreateTopic, описаны типы и эволюция. -->
+<!-- docs/forum-contracts.md v0.4.2
+Purpose: Контракты данных для страниц форума: перечень общих типов, описания
+         страниц хаба, категории, создания тем, постов и базовых полей.
+FIX: Объединены дублирующиеся версии (v0.1.0 и v0.2.0) и приведён в
+     актуальный вид; добавлено описание эволюции контрактов и инварианты.
+-->
 
 # Контракты данных
 

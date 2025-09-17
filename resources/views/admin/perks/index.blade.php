@@ -80,7 +80,7 @@
                       <span class="icon">✏️</span>
                     </a>
                     <form method="POST" action="/admin/perks/<?= (int)$p['id'] ?>/delete" class="inline-form" onsubmit="return confirm('Удалить perk?')">
-                      <input type="hidden" name="_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                      <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
                       <button class="icon-btn icon-btn--danger" type="submit" title="Удалить">
                         <span class="icon">🗑</span>
                       </button>

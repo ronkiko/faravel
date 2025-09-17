@@ -11,6 +11,8 @@ use Faravel\Foundation\ServiceProvider;
 use Faravel\Support\Facades\View;
 use App\Http\Composers\ForumBasePageComposer;
 
+use App\Support\Logger;
+
 final class ForumViewServiceProvider extends ServiceProvider
 {
     /**
@@ -20,6 +22,8 @@ final class ForumViewServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
         // no bindings here
     }
 
@@ -36,6 +40,9 @@ final class ForumViewServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
+
         // Каноничная регистрация: один класс на несколько паттернов.
         View::composer(['forum.*', 'layouts.*'], ForumBasePageComposer::class);
     }

@@ -14,6 +14,9 @@ use Faravel\Http\Session;
 use Faravel\Http\Request;
 use App\Services\Layout\LayoutService;
 
+// Import logger for debug messages
+use App\Support\Logger;
+
 final class AppServiceProvider extends ServiceProvider
 {
     /**
@@ -23,6 +26,9 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
+
         // Example app service
         $this->app->bind(Passat::class, function () {
             return new Passat();
@@ -61,6 +67,8 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // no-op
     }
 }

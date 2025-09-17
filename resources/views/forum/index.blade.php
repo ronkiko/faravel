@@ -1,7 +1,7 @@
-<!-- v0.4.7 -->
+<!-- v0.4.121 -->
 {{-- resources/views/forum/index.blade.php
-Назначение: главная страница форума (список категорий) в теме Xen.
-FIX: Удалены @section('title') и тестовый текст; заголовок страницы идет через $layout['title'].
+Назначение: главная форума — список категорий (строгий Blade).
+FIX: никаких ??/функций; вывод только подготовленных данных VM.
 --}}
 @extends('layouts.xen.theme')
 
@@ -9,9 +9,9 @@ FIX: Удалены @section('title') и тестовый текст; загол
   <div class="f-wrap" style="max-width:1000px;margin:18px auto;padding:0 12px">
     <h1>{{ $vm['title'] }}</h1>
 
-    @if ($vm['categories'])
+    @if($vm['has_categories'])
       <ul>
-        @foreach ($vm['categories'] as $c)
+        @foreach($vm['categories'] as $c)
           <li><a href="{{ $c['url'] }}">{{ $c['title'] }}</a></li>
         @endforeach
       </ul>

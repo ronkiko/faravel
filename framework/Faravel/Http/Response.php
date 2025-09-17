@@ -1,8 +1,6 @@
 <?php // v0.4.2
 /* framework/Faravel/Http/Response.php
 Purpose: HTTP-ответ Faravel: статус/заголовки/куки/контент + утилиты (view/json/redirect).
-FIX: Устранено дублирование: Response::view() объявлен устаревшим и теперь проксирует
-     в response()->view(...), не выполняя собственный рендер. Каноничный путь — фабрика.
 */
 
 namespace Faravel\Http;
@@ -98,49 +96,6 @@ class Response
             $this->setHeader((string)$key, (string)$value);
         }
         return $this;
-    }
-
-    /**
-     * Вернуть представление как HTML-ответ (устаревший метод).
-     * В Faravel каноничный путь — использовать фабрику:
-     *   return response()->view('tpl', $data, 200, ['X-Foo' => 'bar']);
-     *
-     * Этот метод оставлен для обратной совместимости и ПРОКСИРУЕТ в фабрику ответов,
-     * чтобы не дублировать рендер. Будет удалён в следующем мажорном релизе.
-     *
-     * @deprecated Use response()->view($viewName, $data, $status, $headers) instead.
-     *
-     * @param string               $viewName Имя вида 'a.b.c'.
-     * @param array<string,mixed>  $data     Локальные данные.
-     * @param int                  $status   Код состояния HTTP.
-     * @param array<string,string> $headers  Доп. заголовки.
-     *
-     * Preconditions:
-     * - Провайдеры ViewServiceProvider/ForumViewServiceProvider зарегистрированы.
-     * Side effects: делегирует в фабрику ответов через глобальный helper response().
-     *
-     * @return static
-     */
-    public function view(string $viewName, array $data = [], int $status = 200, array $headers = []): static
-    {
-        // Emit runtime deprecation notice in dev (не критично в проде).
-        if (function_exists('env') && (env('APP_ENV') === 'local' || env('APP_DEBUG'))) {
-            @trigger_error(
-                'Response::view() is deprecated; use response()->view(...)',
-                E_USER_DEPRECATED
-            );
-        }
-
-        // Делегируем фабрике и возвращаем полученный Response (новый инстанс).
-        /** @var Response $resp */
-        $resp = \response()->view($viewName, $data);
-
-        // Применим желаемый статус/заголовки к результату.
-        $resp->status($status)->withHeaders($headers);
-
-        // Возвращаем объект-результат вместо "перенастройки" текущего инстанса.
-        // Это совместимо с сигнатурой (возвращается Response).
-        return $resp;
     }
 
     /**

@@ -1,55 +1,60 @@
-<?php // v0.4.1
+<?php // v0.4.135
 /* app/Http/Controllers/Forum/Pages/ShowCategoryAction.php
-Purpose: GET /forum/c/{category_slug}/ — category page render. Thin controller.
-FIX: Switched to CategoryPageVM::fromArray() + standardized auth.username.
+Purpose: GET /forum/c/{category_slug} — страница категории: тонкий контроллер,
+         вызывает CategoryQueryService, формирует CategoryPageVM и рендерит Blade.
+FIX: Убрана ручная сборка $layout. Передаём layout_overrides с nav_active='forum'
+     и title. FlashVM — массив. Контракт ID категории — string (UUID).
 */
 namespace App\Http\Controllers\Forum\Pages;
 
 use Faravel\Http\Request;
 use Faravel\Http\Response;
-use Faravel\Support\Facades\Auth;
 use App\Services\Forum\CategoryQueryService;
 use App\Http\ViewModels\Forum\CategoryPageVM;
-use App\Http\ViewModels\Layout\LayoutNavbarVM;
 use App\Http\ViewModels\Layout\FlashVM;
 
 final class ShowCategoryAction
 {
     /**
-     * @param \Faravel\Http\Request $req
-     * @param string $category_slug
-     * @return \Faravel\Http\Response
+     * Показ страницы категории.
+     *
+     * @param Request $request       Текущий HTTP-запрос.
+     * @param string  $category_slug Slug категории; непустой.
+     * @pre $category_slug !== ''.
+     * @side-effects Чтение сессии (FlashVM); чтение БД внутри сервиса.
+     * @return Response HTML-ответ (200) или 404.
+     * @throws \Throwable Ошибки БД/рендера пробрасываются.
+     * @example GET /forum/c/test/
      */
-    public function __invoke(Request $req, string $category_slug): Response
+    public function __invoke(Request $request, string $category_slug): Response
     {
         $svc = new CategoryQueryService();
-        $cat = $svc->findCategoryBySlug($category_slug);
-        if (!$cat) {
-            return response()->view('errors.404', [], 404);
+
+        $category = $svc->findCategoryBySlug($category_slug);
+        if (!$category) {
+            return response('Категория не найдена', 404);
         }
 
-        $hubsTop = $svc->topTagsForCategory((string)$cat['id'], 10);
+        $hubs = $svc->listHubsForCategory((string) $category['id']);
+
         $vm = CategoryPageVM::fromArray([
-            'category' => $cat,
-            'hubsTop'  => $hubsTop,
+            'category' => [
+                'slug'        => (string)($category['slug'] ?? ''),
+                'title'       => (string)($category['title'] ?? ''),
+                'description' => (string)($category['description'] ?? ''),
+            ],
+            'hubs' => $hubs,
         ]);
 
-        $user = Auth::user();
-        $auth = [
-            'is_auth'    => (bool)$user,
-            'username'   => $user->username ?? ($user['username'] ?? ''),
-            'avatar_url' => '',
-            'is_admin'   => (bool)($user->is_admin ?? ($user['is_admin'] ?? false)),
-        ];
+        $flash = FlashVM::fromSession($request->session())->toArray();
 
         return response()->view('forum.category', [
-            'vm'     => $vm->toArray(),
-            'layout' => [
-                'title'  => 'Категория: ' . (string)$cat['title'],
-                'locale' => 'ru',
-                'nav'    => LayoutNavbarVM::fromAuth($auth),
+            'vm'                => $vm->toArray(),
+            'layout_overrides'  => [
+                'title'      => 'Категория: ' . (string)($category['title'] ?? ''),
+                'nav_active' => 'forum',
             ],
-            'flash'  => FlashVM::from([]),
+            'flash'             => $flash,
         ]);
     }
 }

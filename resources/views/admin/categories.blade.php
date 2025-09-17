@@ -108,7 +108,7 @@
                       </a>
                       <form method="POST" action="/admin/categories/<?= $e($id) ?>/delete" class="inline-form"
                             onsubmit="return confirm('Удалить категорию?');">
-                        <?= csrf_field() ?>
+                        <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
                         <input type="hidden" name="id" value="<?= $e($id) ?>">
                         <button class="icon-btn icon-btn--danger" type="submit" title="Удалить">
                           <span class="icon" aria-hidden="true">🗑</span>
@@ -132,7 +132,7 @@
         <div class="card" style="margin-bottom:14px;">
           <div class="card__body">
             <form class="form" method="POST" action="/admin/categories">
-              <?= csrf_field() ?>
+              <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
 
               <div class="grid" style="display:grid;grid-template-columns:2fr 3fr auto;gap:12px;align-items:end;">
                 <label class="group" style="margin:0;">
@@ -169,7 +169,7 @@
 
             <form method="POST" action="/admin/categories/<?= $e($cid) ?>/delete" class="inline-form"
                   onsubmit="return confirm('Удалить категорию? Связанные записи могут запретить удаление.');">
-              <?= csrf_field() ?>
+              <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
               <input type="hidden" name="id" value="<?= $e($cid) ?>">
               <button class="button button--danger" type="submit">
                 <span class="icon" aria-hidden="true">🗑</span><span>Удалить</span>
@@ -179,7 +179,7 @@
 
           <div class="box-form box-form--wide">
             <form class="form" method="POST" action="/admin/categories/<?= $e($cid) ?>/edit">
-              <?= csrf_field() ?>
+              <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
               <input type="hidden" name="id" value="<?= $e($cid) ?>">
 
               <div class="group">

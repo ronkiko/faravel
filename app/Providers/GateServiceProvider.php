@@ -13,6 +13,8 @@ use Faravel\Foundation\ServiceProvider;
 use Faravel\Auth\Auth;
 use Faravel\Auth\GateManager;
 
+use App\Support\Logger;
+
 /**
  * Провайдер авторизации (Gate). Чистая инфраструктура DI, без бизнес-логики.
  * Регистрирует:
@@ -32,6 +34,9 @@ final class GateServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
+
         // 1) Core Auth singleton (framework service).
         $this->app->singleton(Auth::class, static function (): Auth {
             // Auth has parameterless constructor; it will access session internally as needed.
@@ -60,6 +65,8 @@ final class GateServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // Intentionally empty.
     }
 }

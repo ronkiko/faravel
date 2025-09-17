@@ -1,10 +1,11 @@
-<?php // v0.4.4
+<?php // v0.4.5
 /* app/Http/Controllers/AuthController.php
 Purpose: Контроллер аутентификации (страницы и обработчики). В GET-методах
          используем LayoutService::build() для унификации лайаута.
-FIX: Приведены результаты DB::first() к массивам (array-cast), чтобы IDE/статический
-     анализ не ругались: Expected array, found object. Также привёл выборки в
-     hydrateUserForSession() к массивам.
+FIX: Шаг 1 (MVC): контроллер больше не кладёт «толстого» пользователя в сессию и
+     не передаёт массив в сервис. В login()/register() передаём только ID:
+     Auth::login((string)$user['id']). Удалены приватные дублирующие методы
+     hydrateUserForSession() и putAuthUser().
 */
 namespace App\Http\Controllers;
 
@@ -21,7 +22,7 @@ use PDOException;
 class AuthController
 {
     /**
-     * Показать форму логина (строгий Blade + единый layout-строитель).
+     * Show login form (strict Blade + unified layout builder).
      *
      * @param Request $request
      * @return Response
@@ -58,7 +59,9 @@ class AuthController
     }
 
     /**
-     * POST /login — валидация и вход.
+     * POST /login — validate credentials and sign in.
+     *
+     * Controller stays thin: delegates auth to service with user ID only.
      *
      * @param Request $request
      * @return Response
@@ -97,7 +100,7 @@ class AuthController
             return redirect('/login', 302);
         }
 
-        // Получаем пользователя и СРАЗУ приводим к массиву
+        // Fetch user and cast to array immediately for uniform access.
         $userRow = DB::table('users')->where('username', '=', $username)->first();
         /** @var array<string,mixed>|null $user */
         $user = $userRow ? (array)$userRow : null;
@@ -121,9 +124,8 @@ class AuthController
             return redirect('/login', 302);
         }
 
-        $user = $this->hydrateUserForSession($user);
-        Auth::login($user);
-        $this->putAuthUser($request->session(), $user);
+        // Canonical: log in by user ID; do not persist full user in session.
+        Auth::login((string)$user['id']);
 
         $s = $request->session();
         $s->forget('_old_input');
@@ -132,7 +134,7 @@ class AuthController
     }
 
     /**
-     * Показать форму регистрации.
+     * Show register form.
      *
      * @param Request $request
      * @return Response
@@ -169,7 +171,9 @@ class AuthController
     }
 
     /**
-     * POST /register — валидация/создание/вход.
+     * POST /register — validate/create/sign in.
+     *
+     * Controller remains thin: on success, service is called with user ID only.
      *
      * @param Request $request
      * @return Response
@@ -249,15 +253,13 @@ class AuthController
             throw $e;
         }
 
-        // Читаем только что созданного пользователя и приводим к массиву
+        // Read just created user and sign in by ID (no full user in session).
         $userRow = DB::table('users')->where('id', '=', $uuid)->first();
         /** @var array<string,mixed>|null $user */
         $user = $userRow ? (array)$userRow : null;
 
         if ($user) {
-            $user = $this->hydrateUserForSession($user);
-            Auth::login($user);
-            $this->putAuthUser($request->session(), $user);
+            Auth::login((string)$user['id']);
             $request->session()->forget('_old_input');
             return redirect('/', 302);
         }
@@ -269,60 +271,28 @@ class AuthController
         return redirect('/register', 302);
     }
 
+    /**
+     * Logout current user.
+     *
+     * @param Request $request
+     * @return Response
+     */
     public function logout(Request $request): Response
     {
         Auth::logout();
         return redirect('/', 302);
     }
 
+    /**
+     * Generate UUID v4.
+     *
+     * @return string
+     */
     protected static function uuidv4(): string
     {
         $data = random_bytes(16);
         $data[6] = chr((ord($data[6]) & 0x0f) | 0x40);
         $data[8] = chr((ord($data[8]) & 0x3f) | 0x80);
         return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
-    }
-
-    /**
-     * Гидрируем пользователя для сессии.
-     *
-     * @param array<string,mixed> $user
-     * @return array<string,mixed>
-     */
-    private function hydrateUserForSession(array $user): array
-    {
-        if (!isset($user['language_id']) && isset($user['language'])) {
-            $user['language_id'] = (int)$user['language'];
-        }
-        if (!isset($user['role_label']) && isset($user['role_id'])) {
-            $rRow = DB::table('roles')->select('label','name')
-                ->where('id', '=', (int)$user['role_id'])->first();
-            /** @var array<string,mixed> $r */
-            $r = $rRow ? (array)$rRow : [];
-            $user['role_label'] = trim((string)($r['label'] ?? $r['name'] ?? 'User'));
-        }
-        if (!isset($user['group_name']) && isset($user['group_id'])) {
-            $gRow = DB::table('groups')->select('name')
-                ->where('id', '=', (int)$user['group_id'])->first();
-            /** @var array<string,mixed> $g */
-            $g = $gRow ? (array)$gRow : [];
-            $user['group_name'] = (string)($g['name'] ?? '—');
-        }
-        return $user;
-    }
-
-    /** Сохраняем расширенного пользователя в сессию и Auth. */
-    private function putAuthUser($session, array $user): void
-    {
-        try {
-            $session->put('auth.user', $user);
-            $session->put('authUser',  $user);
-            $session->put('user',      $user);
-        } catch (\Throwable $e) {}
-        try {
-            if (is_callable([Auth::class, 'setUser'])) {
-                Auth::setUser($user);
-            }
-        } catch (\Throwable $e) {}
     }
 }

@@ -14,7 +14,7 @@ FIX: Убраны инлайновые стили, добавлена кнопк
     <form class="form" method="POST" action="/login" autocomplete="on"
           style="background:#fff;border:1px solid #d9dee8;border-radius:10px;padding:16px;
                  box-shadow:0 2px 8px rgba(0,0,0,.06);max-width:480px">
-      <input type="hidden" name="_token" value="{{ $csrf_token ?? '' }}">
+      <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
       <div class="group" style="margin-bottom:12px">
         <label for="login-username" style="display:block;margin-bottom:6px">Username</label>
         <input id="login-username" type="text" name="username" value=""

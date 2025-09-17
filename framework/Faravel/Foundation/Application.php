@@ -14,6 +14,9 @@ use RuntimeException;
 use Faravel\Support\Config;
 use Faravel\Support\Env;
 
+// For debug logging. We use the application's Logger to trace lifecycle steps.
+use App\Support\Logger;
+
 class Application implements ArrayAccess
 {
     /** Глобальный текущий инстанс приложения (для base_path() и т.п.). */
@@ -255,6 +258,9 @@ class Application implements ArrayAccess
      */
     public function registerConfiguredProviders(): void
     {
+        // Debug: begin provider registration
+        Logger::log('APP.REGISTERPROVIDERS.START', 'Start registering configured providers');
+
         // 1) .env
         if (class_exists(Env::class)) {
             Env::load($this->basePath);
@@ -281,11 +287,16 @@ class Application implements ArrayAccess
             /** @var object $provider */
             $provider = new $providerClass($this);
             $this->providers[] = $provider;
+            // Debug: indicate provider is being registered
+            Logger::log('APP.PROVIDER.REGISTER', (string) $providerClass);
 
             if (method_exists($provider, 'register')) {
                 $provider->register();
             }
         }
+
+        // Debug: end provider registration
+        Logger::log('APP.REGISTERPROVIDERS.END', 'Finished registering providers');
     }
 
     /**
@@ -299,11 +310,17 @@ class Application implements ArrayAccess
      */
     public function loadRoutes(): void
     {
+        // Debug: begin route loading
+        Logger::log('APP.LOADROUTES.START', 'Loading routes');
+
         $path = $this->basePath . '/routes/web.php';
         if (is_file($path)) {
             /** @noinspection PhpIncludeInspection */
             require_once $path;
         }
+
+        // Debug: end route loading
+        Logger::log('APP.LOADROUTES.END', 'Routes loaded');
     }
 
     /**
@@ -319,11 +336,17 @@ class Application implements ArrayAccess
         if ($this->booted) {
             return;
         }
+        // Debug: begin booting
+        Logger::log('APP.BOOT.START', 'Booting providers');
+
         foreach ($this->providers as $p) {
             if (method_exists($p, 'boot')) {
                 $p->boot();
             }
         }
         $this->booted = true;
+
+        // Debug: finished booting
+        Logger::log('APP.BOOT.END', 'Boot complete');
     }
 }

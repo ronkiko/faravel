@@ -125,7 +125,7 @@ input[disabled], select[disabled], textarea[disabled]{ background:#f9fafb; color
   <?php else: ?>
 
     <form method="POST" action="/profile/edit/save" style="display:grid; gap:12px;">
-      <?= csrf_field() ?>
+      <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
       <input type="hidden" name="user_id" value="<?= opt($u,'id') ?>">
 
       <div class="kv">

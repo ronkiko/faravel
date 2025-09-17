@@ -11,6 +11,8 @@ namespace App\Providers;
 use Faravel\Foundation\ServiceProvider;
 use Faravel\Support\Config;
 
+use App\Support\Logger;
+
 /**
  * HTTP middleware wiring provider.
  *
@@ -47,6 +49,9 @@ final class HttpMiddlewareServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Debug: provider register
+        Logger::log('PROVIDER.REGISTER', static::class . ' register');
+
         $global = Config::get('http.middleware.global', null);
         $aliases = Config::get('http.middleware.aliases', null);
 
@@ -106,6 +111,8 @@ final class HttpMiddlewareServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Debug: provider boot
+        Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // no-op
     }
 }
