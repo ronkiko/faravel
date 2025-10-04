@@ -1,9 +1,9 @@
-<?php // v0.4.139
+<?php // v0.4.141
 /* app/Http/Controllers/Forum/Pages/ShowTopicAction.php
-Purpose: Показ темы по slug|id. Тонкий контроллер: сервис → VM → view. Подсветку навигации
-         задаём через layout_overrides['nav_active']='forum'.
-FIX: Переименован humanizeAgo → общий App\Support\Format\TimeFormatter::format_time();
-     удалён локальный хелпер. Вызовы обновлены.
+Purpose: Показ темы по slug|id. Тонкий контроллер: сервис → VM → view. Подсветку
+         навигации задаём через layout_overrides['nav_active']='forum'.
+FIX: Переведён на конструктор-DI: инжектируем TopicQueryService и TopicPolicyContract;
+     убран new TopicQueryService() и вызов app() для политики.
 */
 
 namespace App\Http\Controllers\Forum\Pages;
@@ -13,29 +13,54 @@ use Faravel\Http\Response;
 use Faravel\Support\Facades\Auth;
 use App\Services\Forum\TopicQueryService;
 use App\Http\ViewModels\Layout\FlashVM;
-use App\Policies\Forum\TopicPolicy;
+use App\Contracts\Policies\Forum\TopicPolicyContract;
 use App\Http\ViewModels\Forum\PostItemVM;
 use App\Http\ViewModels\Forum\TopicPageVM;
 use App\Support\Format\TimeFormatter;
 
 final class ShowTopicAction
 {
+    /** @var \App\Services\Forum\TopicQueryService */
+    private \App\Services\Forum\TopicQueryService $svc;
+
+    /** @var \App\Contracts\Policies\Forum\TopicPolicyContract */
+    private \App\Contracts\Policies\Forum\TopicPolicyContract $policy;
+
+    /**
+     * @param \App\Services\Forum\TopicQueryService             $svc
+     * @param \App\Contracts\Policies\Forum\TopicPolicyContract $policy
+     */
+    public function __construct(
+        \App\Services\Forum\TopicQueryService $svc,
+        \App\Contracts\Policies\Forum\TopicPolicyContract $policy
+    ) {
+        $this->svc = $svc;
+        $this->policy = $policy;
+    }
+
     /**
      * Показ страницы темы.
      *
      * Controller → Service → VM → View: контроллер координирует, бизнес-логики нет.
      *
-     * @param Request $request   Текущий HTTP-запрос.
-     * @param string  $topic_slug Слаг или ID темы; непустой.
-     * @pre $topic_slug !== ''.
-     * @side-effects Чтение БД (TopicQueryService); чтение сессии (FlashVM).
+     * @param Request $request     Текущий HTTP-запрос.
+     * @param string  $topic_slug  Слаг или ID темы; непустой.
+     *
+     * Preconditions:
+     * - $topic_slug !== ''.
+     *
+     * Side effects:
+     * - Чтение БД (TopicQueryService); чтение сессии (FlashVM).
+     *
      * @return Response HTML 200 или 404 при отсутствии темы.
+     *
      * @throws \Throwable Ошибки сервисов/рендера пробрасываются.
+     *
      * @example GET /forum/t/ustanovka-arch-linux/
      */
     public function __invoke(Request $request, string $topic_slug): Response
     {
-        $svc   = new TopicQueryService();
+        $svc = $this->svc;
 
         /** @var array<string,mixed>|null $topic */
         $topic = $svc->findTopicBySlugOrId($topic_slug);
@@ -85,7 +110,7 @@ final class ShowTopicAction
         // Политика + фолбэк на факт входа.
         $auth       = Auth::user();
         $userLite   = is_array($auth) ? $auth : (is_object($auth) ? (array) $auth : null);
-        $canByPol   = (new TopicPolicy())->canReply($userLite, $topic);
+        $canByPol   = $this->policy->canReply($userLite, $topic);
         $isLoggedIn = is_array($userLite) && isset($userLite['id']) && (string) $userLite['id'] !== '';
         $canReply   = (bool) ($canByPol || $isLoggedIn);
 
@@ -125,19 +150,6 @@ final class ShowTopicAction
         ]);
 
         $flash = FlashVM::fromSession($request->session())->toArray();
-
-        // DEBUG
-        /* 
-        die(debug([
-            'vm'               => $vm->toArray(),
-            'postStyle'        => 'classic',
-            'layout_overrides' => [
-                'title'      => 'Тема: ' . (string) $topic['title'],
-                'nav_active' => 'forum',
-            ],
-            'flash'            => $flash,
-        ]));
-        */
 
         return response()->view('forum.topic', [
             'vm'               => $vm->toArray(),

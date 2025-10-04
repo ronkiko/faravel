@@ -1,11 +1,8 @@
-<?php // v0.4.3
+<?php // v0.4.4
 /* app/Providers/ViewServiceProvider.php
 Purpose: Register FileViewFinder, Php/Blade engines, View factory and safe Blade directives.
-FIX: синхронизирована регистрация с актуальными сигнатурами классов:
-- FileViewFinder принимает массив путей, а не строку;
-- BladeEngine принимает ViewFactory;
-- создаём BladeEngine на базе того же экземпляра фабрики и биндим его в контейнере
-  как 'blade', чтобы директивы применялись к используемому движку.
+FIX: В boot добавлены безопасные директивы @csrf и @method, а также View::share('_csrf').
+Директивы возвращают только HTML, без PHP. Совместимо со строгим Blade.
 */
 namespace App\Providers;
 
@@ -25,7 +22,6 @@ final class ViewServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Debug: provider register
         Logger::log('PROVIDER.REGISTER', static::class . ' register');
 
         // View finder (single root path). Read from config('view.paths'), fallback to /resources/views
@@ -35,7 +31,6 @@ final class ViewServiceProvider extends ServiceProvider
             if ($viewPath === '' || !is_dir($viewPath)) {
                 $viewPath = rtrim($app->basePath(), '/') . '/resources/views';
             }
-            // FileViewFinder ожидает массив путей и список расширений:
             return new FileViewFinder([$viewPath], ['blade.php', 'php']);
         });
 
@@ -66,22 +61,62 @@ final class ViewServiceProvider extends ServiceProvider
             return $factory;
         });
 
-        // Важно: отдельный singleton 'view.engine.blade' больше не регистрируем,
-        // чтобы не плодить второй экземпляр и не терять директивы.
+        // Важно: отдельный singleton 'view.engine.blade' не регистрируем, чтобы не дублировать движок.
     }
 
     /**
      * Boot safe Blade directives for strict mode.
      *
      * Design:
-     * - No PHP fragments returned by directives.
-     * - No Gate/service calls inside templates.
-     * - We only transform to other Blade tokens (e.g. @if(...), {{ ... }}).
+     * - Директивы возвращают чистый HTML/Blade, без PHP.
+     * - Никаких вызовов сервисов/гейтов из шаблонов.
+     * - Только синтаксический сахар для вывода.
      */
     public function boot(): void
     {
-        // Debug: provider boot
         Logger::log('PROVIDER.BOOT', static::class . ' boot');
-        // ... остальной код директив остаётся без изменений ...
+
+        // Поделимся CSRF-токеном как переменной, чтобы {{ }} оставались строгими.
+        try {
+            /** @var ViewFactory $view */
+            $view = $this->app->make('view');
+            if (method_exists($view, 'share')) {
+                $view->share('_csrf', csrf_token());
+            }
+        } catch (\Throwable $e) {
+            // Ничего: формы будут без _csrf, VerifyCsrfToken их отклонит.
+        }
+
+        // Зарегистрируем безопасные директивы.
+        try {
+            /** @var BladeEngine $blade */
+            $blade = $this->app->make('blade');
+
+            // @csrf -> скрытое поле с ранее расшаренным значением
+            $blade->addDirective('csrf', static function (?string $expr = null): string {
+                return '<input type="hidden" name="_token" value="{{ $_csrf }}">';
+            });
+
+            // @method('PUT') -> скрытое поле _method. Разрешаем только буквы.
+            $blade->addDirective('method', static function (?string $expr = null): string {
+                $raw = (string)($expr ?? '');
+                $raw = trim($raw);
+                if (str_starts_with($raw, '(') && str_ends_with($raw, ')')) {
+                    $raw = substr($raw, 1, -1);
+                }
+                $raw = trim($raw);
+                if ((str_starts_with($raw, "'") && str_ends_with($raw, "'")) ||
+                    (str_starts_with($raw, '"') && str_ends_with($raw, '"'))) {
+                    $raw = substr($raw, 1, -1);
+                }
+                if (!preg_match('~^[A-Za-z]+$~', $raw)) {
+                    $raw = 'POST';
+                }
+                $escaped = htmlspecialchars($raw, ENT_QUOTES, 'UTF-8');
+                return '<input type="hidden" name="_method" value="' . $escaped . '">';
+            });
+        } catch (\Throwable $e) {
+            // Если Blade недоступен в этот момент, директивы пропустим.
+        }
     }
 }

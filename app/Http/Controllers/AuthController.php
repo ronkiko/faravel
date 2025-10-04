@@ -1,11 +1,9 @@
-<?php // v0.4.5
+<?php // v0.4.7
 /* app/Http/Controllers/AuthController.php
 Purpose: Контроллер аутентификации (страницы и обработчики). В GET-методах
          используем LayoutService::build() для унификации лайаута.
-FIX: Шаг 1 (MVC): контроллер больше не кладёт «толстого» пользователя в сессию и
-     не передаёт массив в сервис. В login()/register() передаём только ID:
-     Auth::login((string)$user['id']). Удалены приватные дублирующие методы
-     hydrateUserForSession() и putAuthUser().
+FIX: Добавлены layout_overrides с nav_active='forum' для форм логина и регистрации,
+     чтобы подсветка меню работала как на форумных страницах.
 */
 namespace App\Http\Controllers;
 
@@ -43,7 +41,7 @@ class AuthController
         $layoutService = new LayoutService();
         $layoutVM = $layoutService->build($request, [
             'title'      => 'Вход',
-            'nav_active' => 'login',
+            'nav_active' => 'forum',
         ]);
 
         $flash = [
@@ -52,16 +50,18 @@ class AuthController
         ];
 
         return response()->view('auth.login', [
-            'vm'     => $pageVM->toArray(),
-            'layout' => $layoutVM->toArray(),
-            'flash'  => $flash,
+            'vm'                => $pageVM->toArray(),
+            'layout'            => $layoutVM->toArray(),
+            'layout_overrides'  => [ // <<< ключ для подсветки
+                'title'      => 'Вход',
+                'nav_active' => 'forum',
+            ],
+            'flash'             => $flash,
         ]);
     }
 
     /**
      * POST /login — validate credentials and sign in.
-     *
-     * Controller stays thin: delegates auth to service with user ID only.
      *
      * @param Request $request
      * @return Response
@@ -100,7 +100,6 @@ class AuthController
             return redirect('/login', 302);
         }
 
-        // Fetch user and cast to array immediately for uniform access.
         $userRow = DB::table('users')->where('username', '=', $username)->first();
         /** @var array<string,mixed>|null $user */
         $user = $userRow ? (array)$userRow : null;
@@ -124,7 +123,6 @@ class AuthController
             return redirect('/login', 302);
         }
 
-        // Canonical: log in by user ID; do not persist full user in session.
         Auth::login((string)$user['id']);
 
         $s = $request->session();
@@ -155,7 +153,7 @@ class AuthController
         $layoutService = new LayoutService();
         $layoutVM = $layoutService->build($request, [
             'title'      => 'Регистрация',
-            'nav_active' => 'login',
+            'nav_active' => 'forum',
         ]);
 
         $flash = [
@@ -164,16 +162,18 @@ class AuthController
         ];
 
         return response()->view('auth.register', [
-            'vm'     => $pageVM->toArray(),
-            'layout' => $layoutVM->toArray(),
-            'flash'  => $flash,
+            'vm'                => $pageVM->toArray(),
+            'layout'            => $layoutVM->toArray(),
+            'layout_overrides'  => [ // <<< ключ для подсветки
+                'title'      => 'Регистрация',
+                'nav_active' => 'forum',
+            ],
+            'flash'             => $flash,
         ]);
     }
 
     /**
      * POST /register — validate/create/sign in.
-     *
-     * Controller remains thin: on success, service is called with user ID only.
      *
      * @param Request $request
      * @return Response
@@ -253,7 +253,6 @@ class AuthController
             throw $e;
         }
 
-        // Read just created user and sign in by ID (no full user in session).
         $userRow = DB::table('users')->where('id', '=', $uuid)->first();
         /** @var array<string,mixed>|null $user */
         $user = $userRow ? (array)$userRow : null;

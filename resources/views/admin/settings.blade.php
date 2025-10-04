@@ -1,43 +1,46 @@
-<!-- v0.1.0 — добавлена шапка версии; поведение без изменений -->
+<!-- v0.4.2 -->
+<!-- resources/views/admin/settings.blade.php
+Назначение: форма настроек троттлинга. Поля из AdminController@settings.
+FIX: Только {{ $layout['csrf'] }} и простые эхо переменных. Без функций и PHP.
+-->
 @extends('layouts.main_admin')
 
 @section('admin_content')
-    <h1 style="margin-top:0">Настройки троттлинга</h1>
-    @include('layouts.flash')
+  <h1 class="page-title">Настройки троттлинга</h1>
+  <p class="muted" style="margin:6px 0 16px;">Ограничения запросов и исключения путей.</p>
 
-    <form method="POST" action="/admin/settings" class="card" style="padding:14px;max-width:560px;">
-        <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
+  <form class="form form-card" action="/admin/settings/save" method="POST" style="max-width:640px;">
+    <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
 
-        <label style="display:block;margin-bottom:8px;">
-            <div>Окно (сек)</div>
-            <input type="number" name="window_sec" min="1" max="3600"
-                   value="<?= htmlspecialchars((string)($window_sec ?? 60), ENT_QUOTES, 'UTF-8') ?>">
-        </label>
+    <div class="group" style="margin-bottom:10px;">
+      <label for="window_sec">Окно, сек</label>
+      <input id="window_sec" name="window_sec" type="number" min="1" max="3600"
+             value="{{ $window_sec }}">
+    </div>
 
-        <label style="display:block;margin-bottom:8px;">
-            <div>GET max</div>
-            <input type="number" name="get_max" min="1" max="10000"
-                   value="<?= htmlspecialchars((string)($get_max ?? 120), ENT_QUOTES, 'UTF-8') ?>">
-        </label>
+    <div class="group" style="margin-bottom:10px;">
+      <label for="get_max">GET, максимум за окно</label>
+      <input id="get_max" name="get_max" type="number" min="1" max="10000"
+             value="{{ $get_max }}">
+    </div>
 
-        <label style="display:block;margin-bottom:8px;">
-            <div>POST max</div>
-            <input type="number" name="post_max" min="1" max="10000"
-                   value="<?= htmlspecialchars((string)($post_max ?? 15), ENT_QUOTES, 'UTF-8') ?>">
-        </label>
+    <div class="group" style="margin-bottom:10px;">
+      <label for="post_max">POST, максимум за окно</label>
+      <input id="post_max" name="post_max" type="number" min="1" max="10000"
+             value="{{ $post_max }}">
+    </div>
 
-        <label style="display:block;margin-bottom:8px;">
-            <div>Session max</div>
-            <input type="number" name="session_max" min="1" max="50000"
-                   value="<?= htmlspecialchars((string)($session_max ?? 300), ENT_QUOTES, 'UTF-8') ?>">
-        </label>
+    <div class="group" style="margin-bottom:10px;">
+      <label for="session_max">Сессии, максимум</label>
+      <input id="session_max" name="session_max" type="number" min="1" max="50000"
+             value="{{ $session_max }}">
+    </div>
 
-        <label style="display:block;margin-bottom:12px;">
-            <div>Исключённые пути (CSV)</div>
-            <input type="text" name="exempt_paths"
-                   value="<?= htmlspecialchars((string)($exempt_paths ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-        </label>
+    <div class="group" style="margin-bottom:14px;">
+      <label for="exempt_paths">Исключённые пути (по одному в строке)</label>
+      <textarea id="exempt_paths" name="exempt_paths" rows="5">{{ $exempt_paths }}</textarea>
+    </div>
 
-        <button type="submit" class="btn">Сохранить</button>
-    </form>
+    <button class="btn" type="submit">Сохранить</button>
+  </form>
 @endsection

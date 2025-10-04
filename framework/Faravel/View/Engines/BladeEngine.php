@@ -1,11 +1,10 @@
-<?php // v0.4.13
+<?php // v0.4.14
 /* framework/Faravel/View/Engines/BladeEngine.php
 Purpose: безопасный Blade-движок Faravel со строгими правилами. Поддерживает
 директивы макета и include. Все include и extends создают представления через
 ViewFactory::make(), чтобы композиторы вызывались как в Laravel.
-FIX: Подключён TTL кеша из конфига view.blade_cache_ttl и флаг схлопывания
-пустых строк view.collapse_empty_lines с безопасными дефолтами. Сигнатура
-кеша обновлена (be-0.4.13).
+FIX: Добавлен алиас addDirective() для совместимости с фасадом/провайдерами.
+Обновлена COMPILE_SIG (be-0.4.14). Безопасные правки, логика рендера неизменна.
 */
 
 namespace Faravel\View\Engines;
@@ -41,7 +40,7 @@ final class BladeEngine implements EngineInterface
     private int $cacheTtlSeconds = 300;
 
     /** Метка версии движка для включения в сигнатуру ключа. */
-    private const COMPILE_SIG = 'be-0.4.13';
+    private const COMPILE_SIG = 'be-0.4.14';
 
     /** @var array<string,callable> Реестр безопасных директив. */
     private array $directives = [];
@@ -81,17 +80,39 @@ final class BladeEngine implements EngineInterface
     /**
      * Зарегистрировать безопасную директиву Blade.
      *
-     * @param string   $name Имя директивы.
-     * @param callable $compiler Компилятор: принимает выражение, возвращает PHP-строку.
+     * Контракт уровня движка для провайдеров/фасада.
+     *
+     * @param string   $name     Имя директивы (без @).
+     * @param callable $compiler Компилятор: принимает выражение
+     *                           (string|null) и возвращает PHP-строку.
      *
      * Preconditions:
-     * - Директивы не должны возвращать фрагменты, нарушающие строгий режим.
+     * - Возвращаемая строка не должна нарушать строгий режим (никаких
+     *   небезопасных эхо, сырого PHP и вызовов внешних сервисов).
+     *
+     * Side effects: меняет внутренний реестр директив.
      *
      * @return void
      */
     public function directive(string $name, callable $compiler): void
     {
         $this->directives[strtolower($name)] = $compiler;
+    }
+
+    /**
+     * Алиас к directive(), чтобы соответствовать распространённому контракту
+     * фасада Blade и упрощать вызовы из провайдеров.
+     *
+     * @param string   $name     Имя директивы.
+     * @param callable $compiler Компилятор директивы.
+     *
+     * @return void
+     *
+     * @example $blade->addDirective('csrf', fn()=>'<input ...>');
+     */
+    public function addDirective(string $name, callable $compiler): void
+    {
+        $this->directive($name, $compiler);
     }
 
     /**
@@ -191,12 +212,12 @@ final class BladeEngine implements EngineInterface
         ]);
 
         // Диагностика
-        $this->debugDump('0a-stripped',  $stage0a, $templatePath);
-        $this->debugDump('0b-pruned',    $stage0b, $templatePath);
-        $this->debugDump('0c-noblanks',  $stage0c, $templatePath);
-        $this->debugDump('1-transformed', $stage1,  $templatePath);
-        $this->debugDump('2-echoed',     $stage2,  $templatePath);
-        $this->debugDump('3-compiled',   $compiled, $templatePath);
+        $this->debugDump('0a-stripped',   $stage0a,  $templatePath);
+        $this->debugDump('0b-pruned',     $stage0b,  $templatePath);
+        $this->debugDump('0c-noblanks',   $stage0c,  $templatePath);
+        $this->debugDump('1-transformed', $stage1,   $templatePath);
+        $this->debugDump('2-echoed',      $stage2,   $templatePath);
+        $this->debugDump('3-compiled',    $compiled, $templatePath);
 
         // Сохранить скомпилированный PHP в кеш.
         $this->storeCompiledToCache($templatePath, $source, $compiled);
@@ -576,7 +597,7 @@ final class BladeEngine implements EngineInterface
     {
         $v = $this->configGet($key, $default);
         if (is_bool($v)) return $v;
-        if (is_string($v)) return in_array(strtolower($v), ['1', 'true', 'yes', 'on'], true);
+        if (is_string($v)) return in_array(strtolower($v), ['1','true','yes','on'], true);
         if (is_numeric($v)) return ((int)$v) !== 0;
         return $default;
     }

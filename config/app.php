@@ -63,6 +63,9 @@ return [
         // Optional legacy compat
         App\Providers\AuthContainerServiceProvider::class,
 
+        // Policies DI bindings
+        App\Providers\PolicyServiceProvider::class,
+
         // Compliance checks for ViewModels
         App\Providers\ViewModelComplianceServiceProvider::class,
     ],

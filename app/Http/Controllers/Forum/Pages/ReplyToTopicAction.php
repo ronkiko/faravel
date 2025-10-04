@@ -1,17 +1,9 @@
-<?php
-/* app/Http/Controllers/Forum/Pages/ReplyToTopicAction.php — v0.2.0
-Назначение: принять POST-ответ в теме, проверить права, создать пост, обновить
-счётчики темы и "последнюю активность" в tag_stats, затем редиректить назад по
-безопасному return_to (или на канонический URL темы с якорем #last).
-FIX: полная реализация без DB::update(); только insert/statement.
-Контракты:
-INPUT (POST): content:string, return_to?:string
-PATH: /forum/t/{topicId}/reply
-OUTPUT: redirect с flash.success|flash.error; без JSON.
-Инварианты:
-- Требуется авторизация и способность forum.post.create (TopicPolicy::canReply).
-- Пустой контент запрещён. UUID поста генерируется локально (v4).
-- Обновляются topics.posts_count/last_post_id/last_post_at и tag_stats.last_activity_at.
+<?php // v0.4.2
+/* app/Http/Controllers/Forum/Pages/ReplyToTopicAction.php
+Purpose: Принять POST-ответ в теме, проверить права через политику, создать пост,
+         обновить счётчики темы и "последнюю активность", затем сделать redirect.
+FIX: Переведён на конструктор-DI: инжектируем TopicPolicyContract; убран вызов
+     app(TopicPolicyContract::class).
 */
 namespace App\Http\Controllers\Forum\Pages;
 
@@ -19,10 +11,42 @@ use Faravel\Http\Request;
 use Faravel\Http\Response;
 use Faravel\Support\Facades\DB;
 use Faravel\Support\Facades\Auth;
-use App\Policies\Forum\TopicPolicy;
+use App\Contracts\Policies\Forum\TopicPolicyContract;
 
 class ReplyToTopicAction
 {
+    /** @var \App\Contracts\Policies\Forum\TopicPolicyContract */
+    private \App\Contracts\Policies\Forum\TopicPolicyContract $policy;
+
+    /**
+     * @param \App\Contracts\Policies\Forum\TopicPolicyContract $policy
+     */
+    public function __construct(\App\Contracts\Policies\Forum\TopicPolicyContract $policy)
+    {
+        $this->policy = $policy;
+    }
+
+    /**
+     * Принять и сохранить ответ в теме.
+     *
+     * Layer: Controller. Координирует проверку прав через политику, валидацию
+     * и делегирует запись в БД. Возвращает redirect с flash-сообщениями.
+     *
+     * @param Request $request  HTTP-запрос с полями content и return_to.
+     * @param string  $topicId  Идентификатор темы; непустая строка UUID/ULID.
+     *
+     * Preconditions:
+     * - Пользователь должен быть авторизован.
+     * - Тема с $topicId должна существовать.
+     *
+     * Side effects:
+     * - Модификация БД (insert в posts; update topics, tag_stats).
+     * - Модификация сессии (flash).
+     *
+     * @return Response Redirect на страницу темы с якорем #last.
+     * @throws \Throwable При ошибках БД.
+     * @example POST /forum/t/1234/reply
+     */
     public function __invoke(Request $request, string $topicId): Response
     {
         $content  = trim((string)$request->input('content', ''));
@@ -46,7 +70,7 @@ class ReplyToTopicAction
         $topicArr = (array)$topic;
 
         // Права
-        if (!(new TopicPolicy())->canReply($user, $topicArr)) {
+        if (!$this->policy->canReply($user, $topicArr)) {
             session()->flash('error', 'Нет прав для ответа в эту тему.');
             return redirect($this->safeRedirect($returnTo, $topicId));
         }
@@ -60,7 +84,6 @@ class ReplyToTopicAction
         // Создание поста
         $postId = self::uuidV4();
         try {
-            // Пытаемся через QueryBuilder
             DB::table('posts')->insert([
                 'id'         => $postId,
                 'topic_id'   => $topicId,
@@ -71,7 +94,7 @@ class ReplyToTopicAction
                 'is_deleted' => 0,
             ]);
         } catch (\Throwable $e) {
-            // Фоллбэк на ручной statement (на случай отсутствия insert() в обёртке)
+            // Фолбэк на ручной statement
             try {
                 DB::statement(
                     "INSERT INTO posts (id, topic_id, user_id, content, created_at, updated_at, is_deleted)
@@ -79,7 +102,7 @@ class ReplyToTopicAction
                     [$postId, $topicId, (string)$user['id'], $content, $now, $now]
                 );
             } catch (\Throwable $e2) {
-                session()->flash('error', 'Ошибка сохранения сообщения.');
+                session()->flash('error', 'Не удалось сохранить сообщение.');
                 return redirect($this->safeRedirect($returnTo, $topicId));
             }
         }
@@ -88,25 +111,24 @@ class ReplyToTopicAction
         try {
             DB::statement(
                 "UPDATE topics
-                   SET posts_count = posts_count + 1,
-                       last_post_id = ?,
-                       last_post_at = ?,
-                       updated_at   = ?
-                 WHERE id = ?",
+                    SET posts_count = posts_count + 1,
+                        last_post_id = ?,
+                        last_post_at = ?,
+                        updated_at   = ?
+                  WHERE id = ?",
                 [$postId, $now, $now, $topicId]
             );
         } catch (\Throwable $e) {
-            // мягко игнорируем: счётчики поправим отдельно, если потребуется
+            // необязательно для успешного ответа
         }
 
-        // Обновление last_activity_at для всех тегов темы в tag_stats
+        // Последняя активность по тегам
         try {
-            $catId = (string)($topicArr['category_id'] ?? '');
+            $catId = (string)$topicArr['category_id'];
             if ($catId !== '') {
-                $tagRows = DB::table('taggables')
+                $tagRows = DB::table('topic_tags')
                     ->select(['tag_id'])
-                    ->where('entity', '=', 'topic')
-                    ->where('entity_id', '=', $topicId)
+                    ->where('topic_id', '=', $topicId)
                     ->get();
                 foreach ($tagRows as $r) {
                     $tid = (string)$r->tag_id;
@@ -128,16 +150,32 @@ class ReplyToTopicAction
         return redirect($this->safeRedirect($returnTo, $topicId));
     }
 
+    /**
+     * Сформировать безопасный URL для редиректа.
+     *
+     * @param string $returnTo Путь внутри сайта или пусто.
+     * @param string $topicId  ID темы.
+     *
+     * Preconditions:
+     * - $returnTo не должен указывать на внешний домен.
+     *
+     * @return string Абсолютный путь внутри сайта с якорем #last.
+     */
     private function safeRedirect(string $returnTo, string $topicId): string
     {
         $fallback = '/forum/t/'.$topicId;
-        // только внутренняя переадресация
         if ($returnTo !== '' && $returnTo[0] === '/') {
             return $returnTo.'#last';
         }
         return $fallback.'#last';
     }
 
+    /**
+     * Сгенерировать UUID v4 для новой записи поста.
+     *
+     * @return string UUID v4.
+     * @throws \Exception Если random_bytes() недоступен.
+     */
     private static function uuidV4(): string
     {
         $d = random_bytes(16);
@@ -145,7 +183,8 @@ class ReplyToTopicAction
         $d[8] = chr((ord($d[8]) & 0x3f) | 0x80);
         $h = bin2hex($d);
         return sprintf('%s-%s-%s-%s-%s',
-            substr($h, 0, 8), substr($h, 8, 4), substr($h, 12, 4), substr($h, 16, 4), substr($h, 20, 12)
+            substr($h, 0, 8), substr($h, 8, 4), substr($h, 12, 4),
+            substr($h, 16, 4), substr($h, 20, 12)
         );
     }
 }

@@ -1,10 +1,11 @@
-<?php // v0.4.119
+<?php // v0.4.120
 /* routes/web.php
 Purpose: Декларативные маршруты приложения Faravel: форум (категории/хабы/темы/посты),
          а также auth, админка и мод-панель. Тонкие контроллеры Pages/*.
-FIX: Добавлены back-compat алиасы для /forum/h/{tag_slug}/ (show/create GET/POST),
-     указывающие на те же экшены, что и канонический /forum/f/{tag_slug}/.
-     Это устраняет 404 для уже отрендерённых ссылок. Главная (/) возвращает 200 OK.
+FIX: + Админ-маршруты abilities/perks добавлены; корректная навигация. FIX: Добавлены back-compat
+     алиасы для /forum/h/{tag_slug}/ (show/create GET/POST), указывающие на те же экшены, что и
+     канонический /forum/f/{tag_slug}/. Это устраняет 404 для уже отрендерённых ссылок. Главная
+     (/) возвращает 200 OK.
 */
 
 use Faravel\Routing\Router;
@@ -16,6 +17,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AdminCategoryController;
 use App\Http\Controllers\AdminForumController;
+use App\Http\Controllers\AdminAbilityController;
+use App\Http\Controllers\AdminPerkController;
 use App\Http\Controllers\ModController;
 use App\Http\Middleware\AdminOnly;
 use App\Http\Middleware\ModOnly;
@@ -33,7 +36,6 @@ use App\Http\Controllers\Forum\Pages\MoveTopicAction;
 use App\Http\Controllers\Forum\Pages\MergeTopicAction;
 use App\Http\Controllers\Forum\Pages\SplitTopicAction;
 
-// Pages (Posts)
 use App\Http\Controllers\Forum\Pages\PostGotoAction;
 use App\Http\Controllers\Forum\Pages\EditPostFormAction;
 use App\Http\Controllers\Forum\Pages\UpdatePostAction;
@@ -42,150 +44,104 @@ use App\Http\Controllers\Forum\Pages\RestorePostAction;
 use App\Http\Controllers\Forum\Pages\AddReactionAction;
 use App\Http\Controllers\Forum\Pages\RemoveReactionAction;
 
-// Pages (Hubs/Tags)
 use App\Http\Controllers\Forum\Pages\ShowHubAction;
 use App\Http\Controllers\Forum\Pages\CreateTopicFormAction;
 use App\Http\Controllers\Forum\Pages\CreateTopicAction;
 
-// Pages (Category)
 use App\Http\Controllers\Forum\Pages\ShowCategoryAction;
 
-// Pages (Forum root)
 use App\Http\Controllers\Forum\Pages\ForumIndexAction;
-
-/* ===================== /forum/ (root) ===================== */
-
-Router::get('/forum/', [ForumIndexAction::class, '__invoke'])
-    ->name('forum.index');
-
-/* ===================== C/ категории ===================== */
-
-Router::get('/forum/c/{category_slug}/', [ShowCategoryAction::class, '__invoke'])
-    ->name('forum.category.show');
-
-/* ===================== T/ темы ===================== */
-
-Router::get('/forum/t/{topic_slug}/', [ShowTopicAction::class, '__invoke'])
-    ->name('forum.topic.show');
-
-Router::get('/forum/t/{topic_slug}/reply', [ReplyFormAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class])
-    ->name('forum.topic.reply.form');
-
-Router::post('/forum/t/{topic}/reply', [ReplyToTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.reply');
-
-/* Topic moderation */
-Router::post('/forum/t/{topic}/close', [CloseTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.close');
-
-Router::post('/forum/t/{topic}/open', [OpenTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.open');
-
-Router::post('/forum/t/{topic}/pin', [PinTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.pin');
-
-Router::post('/forum/t/{topic}/unpin', [UnpinTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.unpin');
-
-Router::post('/forum/t/{topic}/move', [MoveTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.move');
-
-Router::post('/forum/t/{topic}/merge', [MergeTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.merge');
-
-Router::post('/forum/t/{topic}/split', [SplitTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.split');
-
-/* Topic tags */
-Router::post('/forum/t/{topic}/tags', [UpdateTopicTagsAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.topic.tags.update');
-
-/* ===================== P/ посты ===================== */
-
-Router::get('/forum/p/{post_id}/', [PostGotoAction::class, '__invoke'])
-    ->name('forum.post.goto');
-
-Router::get('/forum/p/{post_id}/edit', [EditPostFormAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class])
-    ->name('forum.post.edit.form');
-
-Router::post('/forum/p/{post_id}/edit', [UpdatePostAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.post.edit');
-
-Router::post('/forum/p/{post_id}/delete', [DeletePostAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.post.delete');
-
-Router::post('/forum/p/{post_id}/restore', [RestorePostAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.post.restore');
-
-Router::post('/forum/p/{post_id}/react', [AddReactionAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.post.react.add');
-
-Router::post('/forum/p/{post_id}/react/remove', [RemoveReactionAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.post.react.remove');
-
-/* ===================== F/ хабы (taggable hubs) ===================== */
-
-Router::get('/forum/f/{tag_slug}/', [ShowHubAction::class, '__invoke'])
-    ->name('forum.hub.show');
-
-Router::get('/forum/f/{tag_slug}/create', [CreateTopicFormAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class])
-    ->name('forum.hub.create.form');
-
-Router::post('/forum/f/{tag_slug}/create', [CreateTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.hub.create');
-
-/* ---- Back-compat aliases for legacy /forum/h/{tag_slug}/ ----
- * These routes map to the same actions as /forum/f/{tag_slug}/ to keep
- * existing rendered links working while we migrate VMs/templates.
- */
-Router::get('/forum/h/{tag_slug}/', [ShowHubAction::class, '__invoke'])
-    ->name('forum.hub.show.h');
-
-Router::get('/forum/h/{tag_slug}/create', [CreateTopicFormAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class])
-    ->name('forum.hub.create.form.h');
-
-Router::post('/forum/h/{tag_slug}/create', [CreateTopicAction::class, '__invoke'])
-    ->middleware([AuthMiddleware::class, Csrf::class])
-    ->name('forum.hub.create.h');
 
 /* ===================== Auth ===================== */
 
-Router::get('/login', [AuthController::class, 'showLoginForm'])
-    ->name('login');
-
-Router::post('/login', [AuthController::class, 'login'])
-    ->middleware([Csrf::class])
-    ->name('login.post');
-
-Router::get('/register', [AuthController::class, 'showRegisterForm'])
-    ->name('register');
-
-Router::post('/register', [AuthController::class, 'register'])
-    ->middleware([Csrf::class])
-    ->name('register.post');
-
+Router::get('/login', [AuthController::class, 'loginForm'])->name('login');
+Router::post('/login', [AuthController::class, 'login'])->middleware([Csrf::class]);
 Router::post('/logout', [AuthController::class, 'logout'])
-    ->middleware([Csrf::class])
+    ->middleware([AuthMiddleware::class, Csrf::class])
     ->name('logout');
+
+Router::get('/register', [AuthController::class, 'showRegisterForm']);
+Router::post('/register',[AuthController::class, 'register']);
+
+/* ===================== Forum: Index ===================== */
+
+Router::get('/forum', [ForumIndexAction::class, 'show'])->name('forum.index');
+Router::get('/forum/', [ForumIndexAction::class, 'show']);
+
+/* ===================== Forum: Categories ===================== */
+
+Router::get('/forum/c/{slug}', [ShowCategoryAction::class, 'show'])
+    ->name('forum.category.show');
+
+/* ===================== Forum: Hubs (aliases & canonical) ===================== */
+
+Router::get('/forum/f/{tag_slug}', [ShowHubAction::class, 'show'])
+    ->name('forum.hub.show');
+
+Router::get('/forum/h/{tag_slug}', [ShowHubAction::class, 'show']);
+Router::get('/forum/h/{tag_slug}/', [ShowHubAction::class, 'show']);
+
+Router::get('/forum/f/{tag_slug}/create', [CreateTopicFormAction::class, 'show'])
+    ->middleware([AuthMiddleware::class])
+    ->name('forum.topic.create.form');
+
+Router::post('/forum/f/{tag_slug}/create', [CreateTopicAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.topic.create');
+
+Router::get('/forum/h/{tag_slug}/create', [CreateTopicFormAction::class, 'show'])
+    ->middleware([AuthMiddleware::class]);
+Router::post('/forum/h/{tag_slug}/create', [CreateTopicAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class]);
+
+/* ===================== Forum: Topics ===================== */
+
+Router::get('/forum/t/{id}', [ShowTopicAction::class, 'show'])
+    ->name('forum.topic.show');
+Router::get('/forum/t/{id}/reply', [ReplyFormAction::class, 'show'])
+    ->middleware([AuthMiddleware::class])
+    ->name('forum.topic.reply.form');
+Router::post('/forum/t/{id}/reply', [ReplyToTopicAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.topic.reply');
+
+Router::post('/forum/t/{id}/tags', [UpdateTopicTagsAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.topic.tags');
+
+Router::post('/forum/t/{id}/close', [CloseTopicAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.topic.close');
+Router::post('/forum/t/{id}/open', [OpenTopicAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.topic.open');
+Router::post('/forum/t/{id}/pin', [PinTopicAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.topic.pin');
+Router::post('/forum/t/{id}/unpin', [UnpinTopicAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.topic.unpin');
+
+Router::get('/forum/p/{id}', [PostGotoAction::class, 'goto'])
+    ->name('forum.post.goto');
+Router::get('/forum/p/{id}/edit', [EditPostFormAction::class, 'show'])
+    ->middleware([AuthMiddleware::class])
+    ->name('forum.post.edit.form');
+Router::post('/forum/p/{id}/edit', [UpdatePostAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.post.edit');
+Router::post('/forum/p/{id}/delete', [DeletePostAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.post.delete');
+Router::post('/forum/p/{id}/restore', [RestorePostAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.post.restore');
+Router::post('/forum/p/{id}/react', [AddReactionAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.post.react');
+Router::post('/forum/p/{id}/unreact', [RemoveReactionAction::class, 'handle'])
+    ->middleware([AuthMiddleware::class, Csrf::class])
+    ->name('forum.post.unreact');
 
 /* ===================== Admin Panel =====================
  * Admin routes are protected by AuthMiddleware + AdminOnly.
@@ -249,6 +205,56 @@ Router::post('/admin/forums/{id}', [AdminForumController::class, 'update'])
 Router::post('/admin/forums/{id}/delete', [AdminForumController::class, 'destroy'])
     ->middleware([AuthMiddleware::class, AdminOnly::class, Csrf::class])
     ->name('admin.forums.delete');
+
+/* Abilities management */
+Router::get('/admin/abilities', [AdminAbilityController::class, 'index'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class])
+    ->name('admin.abilities');
+
+Router::get('/admin/abilities/create', [AdminAbilityController::class, 'create'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class])
+    ->name('admin.abilities.create');
+
+Router::post('/admin/abilities', [AdminAbilityController::class, 'store'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class, Csrf::class])
+    ->name('admin.abilities.store');
+
+Router::get('/admin/abilities/{id}/edit', [AdminAbilityController::class, 'edit'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class])
+    ->name('admin.abilities.edit');
+
+Router::post('/admin/abilities/{id}', [AdminAbilityController::class, 'update'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class, Csrf::class])
+    ->name('admin.abilities.update');
+
+Router::post('/admin/abilities/{id}/delete', [AdminAbilityController::class, 'delete'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class, Csrf::class])
+    ->name('admin.abilities.delete');
+
+/* Perks management */
+Router::get('/admin/perks', [AdminPerkController::class, 'index'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class])
+    ->name('admin.perks');
+
+Router::get('/admin/perks/create', [AdminPerkController::class, 'create'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class])
+    ->name('admin.perks.create');
+
+Router::post('/admin/perks', [AdminPerkController::class, 'store'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class, Csrf::class])
+    ->name('admin.perks.store');
+
+Router::get('/admin/perks/{id}/edit', [AdminPerkController::class, 'edit'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class])
+    ->name('admin.perks.edit');
+
+Router::post('/admin/perks/{id}', [AdminPerkController::class, 'update'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class, Csrf::class])
+    ->name('admin.perks.update');
+
+Router::post('/admin/perks/{id}/delete', [AdminPerkController::class, 'delete'])
+    ->middleware([AuthMiddleware::class, AdminOnly::class, Csrf::class])
+    ->name('admin.perks.delete');
 
 /* ===================== Mod Panel ===================== */
 

@@ -1,9 +1,9 @@
-<?php // v0.4.135
+<?php // v0.4.136
 /* app/Http/Controllers/Forum/Pages/ShowCategoryAction.php
 Purpose: GET /forum/c/{category_slug} — страница категории: тонкий контроллер,
          вызывает CategoryQueryService, формирует CategoryPageVM и рендерит Blade.
-FIX: Убрана ручная сборка $layout. Передаём layout_overrides с nav_active='forum'
-     и title. FlashVM — массив. Контракт ID категории — string (UUID).
+FIX: Переведён на конструктор-DI: инжектируем CategoryQueryService вместо
+     new CategoryQueryService().
 */
 namespace App\Http\Controllers\Forum\Pages;
 
@@ -15,6 +15,17 @@ use App\Http\ViewModels\Layout\FlashVM;
 
 final class ShowCategoryAction
 {
+    /** @var \App\Services\Forum\CategoryQueryService */
+    private \App\Services\Forum\CategoryQueryService $svc;
+
+    /**
+     * @param \App\Services\Forum\CategoryQueryService $svc
+     */
+    public function __construct(\App\Services\Forum\CategoryQueryService $svc)
+    {
+        $this->svc = $svc;
+    }
+
     /**
      * Показ страницы категории.
      *
@@ -28,7 +39,7 @@ final class ShowCategoryAction
      */
     public function __invoke(Request $request, string $category_slug): Response
     {
-        $svc = new CategoryQueryService();
+        $svc = $this->svc;
 
         $category = $svc->findCategoryBySlug($category_slug);
         if (!$category) {

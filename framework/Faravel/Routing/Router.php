@@ -1,10 +1,10 @@
-<?php // v0.4.3
+<?php // v0.4.7
 /* framework/Faravel/Routing/Router.php
-Назначение: регистратор и диспетчер маршрутов Faravel; строит стек route‑middleware
+Назначение: регистратор и диспетчер маршрутов Faravel; строит стек route-middleware
 и выполняет action контроллера.
-FIX: executeAction теперь распаковывает параметры маршрута и передаёт их по
-    отдельности в контроллер/closure (`...$args`). Это устраняет ошибку
-    передачи массива вместо строки (например, для параметра category_slug).
+FIX: Добавлено правило алиаса методов форм: если в [Controller,'loginForm'|'registerForm']
+     метод не найден, пробуем 'showLoginForm'/'showRegisterForm'. Логируем подмену.
+     Сохранены: автосборка контроллеров, распаковка параметров, фолбэк на __invoke().
 */
 
 namespace Faravel\Routing;
@@ -12,8 +12,8 @@ namespace Faravel\Routing;
 use Exception;
 use Faravel\Http\Request;
 use Faravel\Http\Response;
-
-// Import logger to trace routing and dispatching.
+use ReflectionClass;
+use ReflectionNamedType;
 use App\Support\Logger;
 
 class Router
@@ -26,7 +26,7 @@ class Router
     protected static array $routes = [];
 
     /**
-     * Стеки групп маршрутов. Используется для наследования префиксов и middleware.
+     * Стеки групп маршрутов. Наследование префиксов и middleware.
      *
      * @var array<int, array{prefix: string, middleware: array<int, class-string>}>
      */
@@ -41,7 +41,6 @@ class Router
 
     /**
      * Получить все зарегистрированные маршруты.
-     * Ключ — HTTP-метод, значение — список RouteDefinition для этого метода.
      *
      * @return array<string, array<int, RouteDefinition>>
      */
@@ -50,68 +49,38 @@ class Router
         return self::$routes;
     }
 
-    /**
-     * Зарегистрировать маршрут GET.
-     *
-     * @param string $uri
-     * @param mixed  $action
-     * @return RouteDefinition
-     */
+    /** @return RouteDefinition */
     public static function get(string $uri, $action): RouteDefinition
     {
         return self::addRoute('GET', $uri, $action);
     }
 
-    /**
-     * Зарегистрировать маршрут POST.
-     *
-     * @param string $uri
-     * @param mixed  $action
-     * @return RouteDefinition
-     */
+    /** @return RouteDefinition */
     public static function post(string $uri, $action): RouteDefinition
     {
         return self::addRoute('POST', $uri, $action);
     }
 
-    /**
-     * Зарегистрировать маршрут PUT.
-     *
-     * @param string $uri
-     * @param mixed  $action
-     * @return RouteDefinition
-     */
+    /** @return RouteDefinition */
     public static function put(string $uri, $action): RouteDefinition
     {
         return self::addRoute('PUT', $uri, $action);
     }
 
-    /**
-     * Зарегистрировать маршрут DELETE.
-     *
-     * @param string $uri
-     * @param mixed  $action
-     * @return RouteDefinition
-     */
+    /** @return RouteDefinition */
     public static function delete(string $uri, $action): RouteDefinition
     {
         return self::addRoute('DELETE', $uri, $action);
     }
 
-    /**
-     * Зарегистрировать маршрут PATCH.
-     *
-     * @param string $uri
-     * @param mixed  $action
-     * @return RouteDefinition
-     */
+    /** @return RouteDefinition */
     public static function patch(string $uri, $action): RouteDefinition
     {
         return self::addRoute('PATCH', $uri, $action);
     }
 
     /**
-     * Базовая логика добавления маршрута (общая для всех HTTP-методов).
+     * Базовая логика добавления маршрута.
      *
      * @param string $method
      * @param string $uri
@@ -143,7 +112,7 @@ class Router
     }
 
     /**
-     * Создать группу маршрутов с общим префиксом или middleware.
+     * Группа маршрутов.
      *
      * @param array<string,mixed> $attributes
      * @param callable            $callback
@@ -167,7 +136,7 @@ class Router
     }
 
     /**
-     * Зарегистрировать именованный маршрут (например, для генерации ссылок).
+     * Зарегистрировать именованный маршрут.
      *
      * @param string          $name
      * @param RouteDefinition $route
@@ -179,13 +148,12 @@ class Router
     }
 
     /**
-     * Получить URI именованного маршрута, подставив параметры.
+     * Получить URI именованного маршрута.
      *
-     * @param string                         $name
-     * @param array<string,string|int>       $params
+     * @param string                   $name
+     * @param array<string,int|string> $params
      * @return string
-     *
-     * @throws Exception Если имя не зарегистрировано.
+     * @throws Exception
      */
     public static function route(string $name, array $params = []): string
     {
@@ -203,7 +171,7 @@ class Router
     }
 
     /**
-     * Найти и выполнить соответствующий маршрут.
+     * Найти и выполнить маршрут.
      *
      * @param Request $request
      * @return Response
@@ -213,12 +181,10 @@ class Router
         $method = $request->method();
         $uri    = rtrim($request->path(), '/') ?: '/';
 
-        // Debug: log incoming request
         Logger::log('ROUTER.DISPATCH', $method . ' ' . $uri);
 
         if (!isset(self::$routes[$method])) {
-            // Debug: no routes registered for this method
-            Logger::log('ROUTER.NOTFOUND', 'No routes registered for ' . $method);
+            Logger::log('ROUTER.NOTFOUND', 'No routes for ' . $method);
             return self::notFound();
         }
 
@@ -227,7 +193,6 @@ class Router
             $pattern = '#^' . $pattern . '$#';
 
             if (preg_match($pattern, $uri, $matches)) {
-                // Debug: matched route pattern
                 Logger::log('ROUTE.MATCH', $method . ' ' . $routeDef->uri);
                 $params = [];
                 foreach ($matches as $key => $value) {
@@ -240,17 +205,16 @@ class Router
             }
         }
 
-        // Debug: no route matched for URI
-        Logger::log('ROUTER.NOTFOUND', 'No route matched for ' . $method . ' ' . $uri);
+        Logger::log('ROUTER.NOTFOUND', 'No match for ' . $method . ' ' . $uri);
         return self::notFound();
     }
 
     /**
-     * Запустить маршрут со всем связанным middleware и обработчиком.
+     * Запустить маршрут со стеком middleware.
      *
-     * @param RouteDefinition               $routeDef
-     * @param Request                       $request
-     * @param array<string,string>          $params
+     * @param RouteDefinition              $routeDef
+     * @param Request                      $request
+     * @param array<string,string>         $params
      * @return Response
      */
     protected static function runRoute(
@@ -259,14 +223,12 @@ class Router
         array $params
     ): Response {
         $core = function (Request $req) use ($routeDef, $params): Response {
-            // Debug: about to execute route action
             Logger::log('ROUTE.RUN', 'Executing route action');
             return self::executeAction($routeDef->action, $req, $params);
         };
 
         foreach (array_reverse($routeDef->middleware) as $middlewareClass) {
             $core = function (Request $req) use ($middlewareClass, $core): Response {
-                // ЕДИНЫЙ контейнер приложения
                 $instance = \container()->make($middlewareClass);
 
                 if (!$instance instanceof \Faravel\Http\Middleware\MiddlewareInterface) {
@@ -280,21 +242,21 @@ class Router
     }
 
     /**
-     * Выполняет действие маршрута (контроллер или замыкание).
+     * Выполнить действие маршрута (контроллер или замыкание).
      *
      * @param mixed                        $action
      * @param Request                      $request
      * @param array<string,string>         $params
      * @return Response
      *
-     * @throws Exception Если некорректный тип обработчика.
+     * @throws Exception
      */
     protected static function executeAction(
         $action,
         Request $request,
         array $params
     ): Response {
-        // Normalize route parameters: use values array to match controller signatures.
+        // Распаковываем параметры маршрута в порядке объявления.
         $args = array_values($params);
 
         if (is_array($action)) {
@@ -304,22 +266,57 @@ class Router
                 throw new Exception("Controller class '{$controllerClass}' not found.");
             }
 
-            $controller = new $controllerClass();
+            // 1) Контроллер через контейнер, при неудаче — через рефлексию.
+            try {
+                $controller = \container()->make($controllerClass);
+            } catch (\Throwable $e) {
+                $controller = self::buildViaReflection($controllerClass);
+            }
 
-            if (!method_exists($controller, $methodName)) {
+            // 2) Разрешение метода: заданный → алиас Form → __invoke() → ошибка.
+            $callableMethod = null;
+            if (method_exists($controller, $methodName)) {
+                $callableMethod = $methodName;
+            } else {
+                // Алиас: loginForm|registerForm → showLoginForm|showRegisterForm
+                if (str_ends_with($methodName, 'Form')) {
+                    $base = substr($methodName, 0, -4); // cut 'Form'
+                    $alt  = 'show' . ucfirst($base) . 'Form';
+                    if (method_exists($controller, $alt)) {
+                        Logger::log(
+                            'ACTION.METHOD.ALIAS',
+                            $controllerClass . " '{$methodName}'→'{$alt}'"
+                        );
+                        $callableMethod = $alt;
+                    }
+                }
+                // Фолбэк: __invoke
+                if ($callableMethod === null && method_exists($controller, '__invoke')) {
+                    Logger::log(
+                        'ACTION.METHOD.FALLBACK',
+                        $controllerClass . " missing '{$methodName}', using __invoke()"
+                    );
+                    $callableMethod = '__invoke';
+                }
+            }
+
+            if ($callableMethod === null) {
+                $public = array_values(array_filter(
+                    get_class_methods($controller),
+                    static fn($m) => $m !== '__construct'
+                ));
+                $hint = $public ? (' Available: ' . implode(',', $public)) : '';
                 throw new Exception(
-                    "Method '{$methodName}' not defined in controller '{$controllerClass}'."
+                    "Method '{$methodName}' not defined in controller '{$controllerClass}'." . $hint
                 );
             }
 
-            // Debug: executing controller action
-            Logger::log('ACTION.CONTROLLER', $controllerClass . '@' . $methodName);
-            // Pass request and unpacked parameters to the controller method.
-            $response = $controller->$methodName($request, ...$args);
+            Logger::log('ACTION.CONTROLLER', $controllerClass . '@' . $callableMethod);
+            /** @var mixed $response */
+            $response = $controller->{$callableMethod}($request, ...$args);
         } elseif (is_callable($action)) {
-            // Debug: executing closure action
             Logger::log('ACTION.CLOSURE', 'Invoking route closure');
-            // Pass request and unpacked parameters to the closure.
+            /** @var mixed $response */
             $response = $action($request, ...$args);
         } else {
             throw new Exception('Invalid route action type.');
@@ -331,20 +328,65 @@ class Router
     }
 
     /**
-     * Ответ 404.
+     * Построить объект класса через рефлексию, автоподставляя зависимости.
      *
-     * @return Response
+     * @param class-string $class
+     * @return object
      */
+    protected static function buildViaReflection(string $class): object
+    {
+        $ref = new ReflectionClass($class);
+        $ctor = $ref->getConstructor();
+
+        if ($ctor === null || $ctor->getNumberOfRequiredParameters() === 0) {
+            return new $class();
+        }
+
+        $deps = [];
+        foreach ($ctor->getParameters() as $p) {
+            $t = $p->getType();
+
+            if ($t instanceof ReflectionNamedType && !$t->isBuiltin()) {
+                $depClass = $t->getName();
+
+                // Сначала просим контейнер (для интерфейсов/абстракций)
+                try {
+                    $deps[] = \container()->make($depClass);
+                    continue;
+                } catch (\Throwable $e) {
+                    // Падать нельзя — пробуем собрать конкретный класс.
+                }
+
+                if (class_exists($depClass)) {
+                    $deps[] = self::buildViaReflection($depClass);
+                    continue;
+                }
+
+                throw new \RuntimeException(
+                    "Unresolvable dependency {$depClass} for {$class}::__construct()"
+                );
+            }
+
+            if ($p->isDefaultValueAvailable()) {
+                $deps[] = $p->getDefaultValue();
+                continue;
+            }
+
+            throw new \RuntimeException(
+                "Cannot autowire scalar parameter \${$p->getName()} in {$class}::__construct()"
+            );
+        }
+
+        return $ref->newInstanceArgs($deps);
+    }
+
+    /** @return Response */
     protected static function notFound(): Response
     {
         return new Response('404 Not Found', 404);
     }
 
-    /**
-     * Ответ 405.
-     *
-     * @return Response
-     */
+    /** @return Response */
     protected static function methodNotAllowed(): Response
     {
         return new Response('405 Method Not Allowed', 405);

@@ -1,12 +1,17 @@
-<?php // v0.4.122
+<?php // v0.4.123
 /* app/Http/ViewModels/Forum/ForumIndexPageVM.php
 Purpose: ViewModel главной страницы форума для строгого Blade. Отдаёт ровно те
-         ключи, которые ждёт шаблон: title, has_categories, categories[{...}].
-FIX: Добавлен 'has_categories'; ссылки категорий нормализованы к /forum/c/{slug}/.
+         ключи, которые ждёт шаблон: title, has_categories, categories[{...}],
+         page, perPage, total. Никаких побочных эффектов на уровне файла.
+FIX: Полная нормализация класса: корректный namespace/FQCN, без top-level кода,
+     статический fromArray(array): static, строгая валидация, чистый toArray(): array.
 */
 namespace App\Http\ViewModels\Forum;
 
-final class ForumIndexPageVM
+use App\Contracts\ViewModel\ArrayBuildable;
+use App\Contracts\ViewModel\ViewModelContract;
+
+final class ForumIndexPageVM implements ViewModelContract, ArrayBuildable
 {
     /** @var string */
     private string $title = 'Форум';
@@ -31,14 +36,15 @@ final class ForumIndexPageVM
      * Сборка VM из данных сервиса/репозитория.
      *
      * @param array<string,mixed> $data
-     *   Поддерживаются ключи:
-     *   - title?:string
-     *   - categories?:array<int,array{id:string,slug:string,title:string,description?:string}>
-     *   - forums?:array<int,array{id:string,slug:string,title:string,description?:string}> (legacy)
-     *   - page?:int, perPage?:int, total?:int
-     * Preconditions:
-     *  - id/slug/title должны быть заданы для каждой категории.
-     * Side effects: нет.
+     * Поддерживаются ключи:
+     *  - title?:string
+     *  - categories?: array<int,array{
+     *      id:string,slug:string,title:string,description?:string
+     *    }>
+     *  - page?:int, perPage?:int, total?:int
+     *
+     * @pre Для каждой категории заданы id, slug, title.
+     * @side-effects Нет.
      * @return static
      * @throws \InvalidArgumentException При отсутствии id|slug|title.
      */
@@ -51,29 +57,25 @@ final class ForumIndexPageVM
         }
 
         /** @var array<int, array<string,mixed>> $src */
-        if (isset($data['categories']) && is_array($data['categories'])) {
-            $src = $data['categories'];
-        } elseif (isset($data['forums']) && is_array($data['forums'])) {
-            $src = $data['forums']; // legacy
-        } else {
-            $src = [];
-        }
+        $src = isset($data['categories']) && is_array($data['categories'])
+            ? $data['categories']
+            : [];
 
         $normalized = [];
-        foreach ($src as $row) {
-            $a = (array)$row;
+        foreach ($src as $i => $row) {
+            $a = (array) $row;
 
-            $id    = (string)($a['id'] ?? '');
-            $slug  = (string)($a['slug'] ?? '');
-            $title = (string)($a['title'] ?? '');
-            $desc  = (string)($a['description'] ?? '');
+            $id    = (string) ($a['id'] ?? '');
+            $slug  = (string) ($a['slug'] ?? '');
+            $title = (string) ($a['title'] ?? '');
 
             if ($id === '' || $slug === '' || $title === '') {
                 throw new \InvalidArgumentException(
-                    'ForumIndexPageVM: each category requires id, slug, title.'
+                    "ForumIndexPageVM.categories[{$i}] requires id, slug, title"
                 );
             }
 
+            $desc = (string) ($a['description'] ?? '');
             $normalized[] = [
                 'id'          => $id,
                 'slug'        => $slug,
@@ -82,23 +84,24 @@ final class ForumIndexPageVM
                 'url'         => '/forum/c/' . rawurlencode($slug) . '/',
             ];
         }
+
         $vm->categories = $normalized;
 
         if (isset($data['page'])) {
-            $vm->page = max(1, (int)$data['page']);
+            $vm->page = max(1, (int) $data['page']);
         }
         if (isset($data['perPage'])) {
-            $vm->perPage = max(1, (int)$data['perPage']);
+            $vm->perPage = max(1, (int) $data['perPage']);
         }
         if (isset($data['total'])) {
-            $vm->total = max(0, (int)$data['total']);
+            $vm->total = max(0, (int) $data['total']);
         }
 
         return $vm;
     }
 
     /**
-     * Отдать массив для строгого Blade (никаких вычислений в шаблоне).
+     * Представление для Blade.
      *
      * @return array{
      *   title:string,

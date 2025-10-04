@@ -1,19 +1,36 @@
-<?php // v0.1.2
+<?php // v0.4.1
 /* app/Http/Controllers/Forum/Pages/CreateTopicFormAction.php
-Назначение: GET /forum/f/{tag_slug}/create → форма создания темы в выбранном хабе.
-FIX: обёртка над существующим ShowCreateTopicAction для единообразия нейминга.
+Purpose: GET /forum/f/{tag_slug}/create — показать форму создания темы.
+FIX: Делегирование в ShowCreateTopicAction через конструктор-DI.
 */
 namespace App\Http\Controllers\Forum\Pages;
 
 use Faravel\Http\Request;
 use Faravel\Http\Response;
-use App\Http\Controllers\Forum\Pages\ShowCreateTopicAction;
 
 final class CreateTopicFormAction
 {
+    /** @var ShowCreateTopicAction */
+    private ShowCreateTopicAction $showCreate;
+
+    /**
+     * @param ShowCreateTopicAction $showCreate Делегат показа формы.
+     */
+    public function __construct(ShowCreateTopicAction $showCreate)
+    {
+        $this->showCreate = $showCreate;
+    }
+
+    /**
+     * Показать форму создания темы выбранного хаба.
+     *
+     * @param Request $req
+     * @param string  $tag_slug
+     *
+     * @return Response HTML-страница формы.
+     */
     public function __invoke(Request $req, string $tag_slug): Response
     {
-        $delegate = new ShowCreateTopicAction();
-        return $delegate($req, $tag_slug);
+        return $this->showCreate->__invoke($req, $tag_slug);
     }
 }

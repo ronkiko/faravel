@@ -1,9 +1,9 @@
-<?php // v0.4.1
+<?php // v0.4.2
 /* app/Providers/ViewModelComplianceServiceProvider.php
 Purpose: Validate all ViewModel classes under App\Http\ViewModels against the
          ArrayBuildable contract at boot time. Fails fast with descriptive errors.
-FIX: Initial addition — scans app/Http/ViewModels, loads classes, checks that
-     fromArray() is static with `static` return type and that toArray() returns array.
+FIX: Added deep debug logging: START/END, scanned files count, per-file FQCN mapping,
+     autoload presence, interface detection, per-class OK/FAIL, and exception traces.
 */
 
 namespace App\Providers;
@@ -45,43 +45,71 @@ final class ViewModelComplianceServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Debug: provider boot
-        Logger::log('PROVIDER.BOOT', static::class . ' boot');
+        Logger::log('VMC.BOOT', 'START');
 
         $dir = dirname(__DIR__) . '/Http/ViewModels';
         if (!is_dir($dir)) {
-            // Нет папки — нечего валидировать.
+            Logger::log('VMC.SKIP', 'directory_missing ' . $dir);
+            Logger::log('VMC.BOOT', 'END');
             return;
         }
 
         $files = $this->gatherPhpFiles($dir);
+        Logger::log('VMC.SCAN.FILES', 'count=' . count($files));
+
+        $checked = 0;
+        $ok = 0;
+        $skipped = 0;
 
         foreach ($files as $file) {
             $fqcn = $this->fqcnFromPath($file, $dir);
+            Logger::log('VMC.MAP', $file . ' -> ' . ($fqcn ?? 'null'));
+
             if ($fqcn === null) {
+                $skipped++;
                 continue;
             }
 
-            // Автозагрузка по PSR-4: App\...
-            if (!class_exists($fqcn)) {
-                // попытка подгрузить (вдруг автолоадер ленивый)
-                require_once $file;
-                if (!class_exists($fqcn)) {
-                    // Не класс — пропускаем (мог быть интерфейс/трейд).
-                    continue;
-                }
+            // Try to autoload class; if not — require_once and re-check
+            $exists = class_exists($fqcn, true);
+            if (!$exists) {
+                @require_once $file;
+                $exists = class_exists($fqcn, false);
+            }
+            Logger::log('VMC.AUTOLOAD', $fqcn . ' exists=' . ($exists ? '1' : '0'));
+
+            if (!$exists) {
+                // Not a class (interface/trait/empty) — skip
+                $skipped++;
+                continue;
             }
 
             $rc = new ReflectionClass($fqcn);
 
-            // Ищем реализации контракта ArrayBuildable
+            // Validate only classes implementing ArrayBuildable
             if (!in_array(\App\Contracts\ViewModel\ArrayBuildable::class, $rc->getInterfaceNames(), true)) {
+                $skipped++;
                 continue;
             }
 
-            $this->validateFromArray($rc, $file);
-            $this->validateToArray($rc, $file);
+            $checked++;
+            try {
+                $this->validateFromArray($rc, $file);
+                $this->validateToArray($rc, $file);
+                Logger::log('VMC.OK', $fqcn);
+                $ok++;
+            } catch (\Throwable $e) {
+                // Log rich context before failing fast
+                Logger::exception('VMC.FAIL', $e, [
+                    'class' => $fqcn,
+                    'file'  => $file,
+                ]);
+                throw $e; // fail fast with the same descriptive message
+            }
         }
+
+        Logger::log('VMC.SUMMARY', "checked={$checked} ok={$ok} skipped={$skipped}");
+        Logger::log('VMC.BOOT', 'END');
     }
 
     /**

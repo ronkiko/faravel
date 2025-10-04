@@ -1,7 +1,7 @@
-<!-- v0.4.121 -->
+<!-- v0.4.122 -->
 {{-- resources/views/forum/index.blade.php
 Назначение: главная форума — список категорий (строгий Blade).
-FIX: никаких ??/функций; вывод только подготовленных данных VM.
+FIX: выводим description для каждой категории; семантика: заголовок + краткое описание.
 --}}
 @extends('layouts.xen.theme')
 
@@ -10,9 +10,18 @@ FIX: никаких ??/функций; вывод только подготов�
     <h1>{{ $vm['title'] }}</h1>
 
     @if($vm['has_categories'])
-      <ul>
+      <ul class="forum-category-list">
         @foreach($vm['categories'] as $c)
-          <li><a href="{{ $c['url'] }}">{{ $c['title'] }}</a></li>
+          <li class="forum-category-item" style="margin:10px 0;">
+            <div class="forum-category-title">
+              <a href="{{ $c['url'] }}">{{ $c['title'] }}</a>
+            </div>
+            @if($c['description'] !== '')
+              <div class="forum-category-desc" style="font-size:0.95em;color:#555;">
+                {{ $c['description'] }}
+              </div>
+            @endif
+          </li>
         @endforeach
       </ul>
     @else
