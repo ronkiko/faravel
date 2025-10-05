@@ -8,47 +8,14 @@ FIX: Центровка и стили как на других страница�
 
 @push('styles')
     <link rel="stylesheet" href="/style/forum.css">
-    <style>
-        .wrap {
-            max-width: 980px;
-            margin: 0 auto
-        }
-
-        .items {
-            display: grid;
-            gap: 12px;
-            margin-top: .75rem
-        }
-
-        .row {
-            padding: 12px;
-            border: 1px solid #e5ecf5;
-            border-radius: 10px;
-            background: #fff
-        }
-
-        .muted {
-            opacity: .75
-        }
-
-        .f-actions {
-            display: flex;
-            gap: .5rem;
-            flex-wrap: wrap
-        }
-
-        .post-body {
-            white-space: pre-wrap
-        }
-    </style>
 @endpush
 
 @section('content')
     <nav class="wrap" aria-label="Хлебные крошки">
         <a href="/forum">Форум</a> <span class="muted">›</span>
-        <a href="/forum/c/{{ $vm['topic']['category_slug'] }}/">{{ $vm['topic']['category_title'] }}</a>
-        <span class="muted">›</span>
-        <span class="muted">{{ $vm['topic']['title'] }}</span>
+        <a href="/forum/c/{{ $vm['topic']['category_slug'] }}/">{{ $vm['topic']['category_title'] }}</a> <span
+            class="muted">›</span>
+        <a href="{{ $vm['breadcrumbs'][2]['url'] }}">{{ $vm['breadcrumbs'][2]['title'] }}</a>
     </nav>
 
     <header class="wrap" style="margin-top:.5rem">

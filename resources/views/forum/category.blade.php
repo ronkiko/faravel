@@ -3,15 +3,6 @@
 
 @push('styles')
   <link rel="stylesheet" href="/style/forum.css">
-  <style>
-    .f-wrap{max-width:980px;margin:18px auto;padding:0 10px}
-    .f-hubs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-    .f-hub{display:inline-block;border:1px solid #d9e0ea;border-radius:999px;padding:6px 10px;font-size:14px}
-    .f-hub--muted{opacity:.6}
-    .f-hub a{text-decoration:none}
-    .f-hub a:hover{text-decoration:underline}
-    .f-desc{margin-top:6px;color:#445}
-  </style>
 @endpush
 
 @section('content')

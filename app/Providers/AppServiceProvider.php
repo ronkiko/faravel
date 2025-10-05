@@ -1,9 +1,9 @@
-<?php // v0.4.4
+<?php // v0.4.6
 /* app/Providers/AppServiceProvider.php
 Purpose: Главный провайдер приложения. Регистрирует DI-биндинги «по-ларaвеловски»
 и выполняет лёгкую инициализацию уровня приложения.
-FIX: Удалены debug-биндинги/маршруты и диагностические записи; чистая регистрация
-     сервисов. Старт сессии перенесён в SessionMiddleware.
+FIX: Удалён необязательный биндинг TopicCreateService — сервис создаётся авто-вайром
+через рефлексию Router'а. Провайдер содержит только реально нужные биндинги.
 */
 namespace App\Providers;
 
@@ -13,8 +13,6 @@ use App\Services\Passat;
 use Faravel\Http\Session;
 use Faravel\Http\Request;
 use App\Services\Layout\LayoutService;
-
-// Import logger for debug messages
 use App\Support\Logger;
 
 final class AppServiceProvider extends ServiceProvider
@@ -26,7 +24,6 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // Debug: provider register
         Logger::log('PROVIDER.REGISTER', static::class . ' register');
 
         // Example app service
@@ -44,12 +41,12 @@ final class AppServiceProvider extends ServiceProvider
             return new \App\Exceptions\Handler(new \Faravel\Logger());
         });
 
-        // Session as per-request singleton (created by container each request; start() in middleware)
+        // Session as per-request singleton
         $this->app->singleton(Session::class, function () {
             return new Session();
         });
 
-        // Request as per-request singleton (refreshed by middleware)
+        // Request as per-request singleton
         $this->app->singleton(Request::class, function () {
             return new Request();
         });
@@ -58,6 +55,9 @@ final class AppServiceProvider extends ServiceProvider
         $this->app->singleton(LayoutService::class, function () {
             return new LayoutService();
         });
+
+        // NOTE: TopicCreateService биндинг не требуется: конструктор пустой,
+        // Router::buildViaReflection() корректно создаёт его по месту использования.
     }
 
     /**
@@ -67,7 +67,6 @@ final class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Debug: provider boot
         Logger::log('PROVIDER.BOOT', static::class . ' boot');
         // no-op
     }

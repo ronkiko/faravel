@@ -1,10 +1,10 @@
-<?php // v0.4.124
+<?php // v0.4.125
 /* app/Services/Layout/LayoutService.php
 Purpose: Сборка $layout для строгого Blade: site/nav/title/locale, ссылки и флаги
          видимости пунктов навигации. Контроллеры передают только overrides.
-FIX: Вынесен общий CSRF-токен на верхний уровень layout.csrf (один на страницу),
-     чтобы любые формы могли использовать его без директив и хелперов в Blade.
-     Источник пользователя — Auth::user(); legacy-ключи исключены.
+FIX: Универсальная подсветка активного раздела без ошибок: если nav_active не
+     задан, извлекаем первую буквенную секцию пути регуляркой ^/([a-zA-Z]+)
+     из Request::path() с безопасным фолбеком на $_SERVER['REQUEST_URI'].
 */
 namespace App\Services\Layout;
 
@@ -15,13 +15,14 @@ use Faravel\Support\Facades\Auth;
 final class LayoutService
 {
     /**
-     * @param Request             $request   Текущий запрос (для унификации сигнатур).
-     * @param array<string,mixed> $overrides Переопределения полей лейаута.
+     * Build LayoutVM for current request.
+     *
+     * @param Request             $request   Current request.
+     * @param array<string,mixed> $overrides Optional overrides (title, site, nav_active).
      * @return LayoutVM
      */
     public function build(Request $request, array $overrides = []): LayoutVM
     {
-        // 1) Current user via Auth service (canonical source of truth)
         /** @var array<string,mixed>|null $usr */
         $usr = Auth::user();
         $isAuth  = is_array($usr);
@@ -30,10 +31,10 @@ final class LayoutService
         $isAdmin = $isAuth && $roleId >= 6;
         $isModer = $isAuth && $roleId >= 3 && $roleId < 6;
 
-        // 2) Title
+        // Title
         $title = isset($overrides['title']) ? (string)$overrides['title'] : 'Faravel';
 
-        // 3) site.* (stable defaults, overridable)
+        // site.* (stable defaults, overridable)
         $so = (array)($overrides['site'] ?? []);
         $site = [
             'title' => isset($so['title']) ? (string)$so['title'] : 'FARAVEL',
@@ -49,12 +50,12 @@ final class LayoutService
             ],
         ];
 
-        // 4) Navigation (active is mandatory)
-        $navActive = isset($overrides['nav_active'])
+        // Navigation active: override > first alpha path segment > 'home'
+        $navActive = isset($overrides['nav_active']) && is_string($overrides['nav_active'])
             ? (string)$overrides['nav_active']
-            : 'home';
+            : $this->detectActiveByPath($request);
 
-        // Base links always available
+        // Base links
         $links = [
             'home'     => '/',
             'forum'    => '/forum/',
@@ -73,7 +74,7 @@ final class LayoutService
             $links['logout'] = '/logout';
         }
 
-        // 5) Build VM (explicit flags + shared CSRF for all page forms)
+        // Build VM (shared CSRF for all page forms)
         return LayoutVM::fromArray([
             'locale' => 'ru',
             'title'  => $title,
@@ -89,10 +90,46 @@ final class LayoutService
                 'auth'   => [
                     'is_auth'  => $isAuth,
                     'is_admin' => $isAdmin,
-                    // Keep username for header widgets (safe subset).
+                    // Safe subset for header widgets.
                     'username' => $isAuth ? (string)($usr['username'] ?? '') : '',
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Detect active section by first alpha path segment.
+     *
+     * @param Request $request
+     * @return string 'admin'|'forum'|'home' etc.
+     *
+     * @example /admin/x -> admin; /forum/y -> forum; / -> home
+     */
+    private function detectActiveByPath(Request $request): string
+    {
+        // Try Request::path() if available.
+        $path = '';
+        if (method_exists($request, 'path')) {
+            /** @var mixed $p */
+            $p = $request->path();
+            $path = is_string($p) ? $p : '';
+        }
+
+        // Fallback to server URI.
+        if ($path === '') {
+            $uri  = (string)($_SERVER['REQUEST_URI'] ?? '/');
+            $path = explode('?', $uri, 2)[0];
+        }
+
+        // Normalize to leading slash
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/' . ltrim($path, '/');
+        }
+
+        // Only letters [a-zA-Z] are considered a section key.
+        if (preg_match('~^/([a-zA-Z]+)~', $path, $m) === 1) {
+            return strtolower($m[1]);
+        }
+        return 'home';
     }
 }

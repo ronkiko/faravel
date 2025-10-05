@@ -1,8 +1,9 @@
-<?php // v0.4.4
+<?php // v0.4.6
 /* app/Http/ViewModels/Forum/HubPageVM.php
-Purpose: ViewModel страницы хаба: нормализует данные под строгий Blade (links, флаги, when)
-         и предоставляет meta для лейаута (title, breadcrumbs) без логики во Blade.
-FIX: Заменена локальная humanizeAgo() на общий App\Support\Format\TimeFormatter::humanize().
+Purpose: ViewModel страницы хаба. Нормализует данные в примитивы для строгого Blade:
+         topics[], pager, links, abilities и плоские флаги. Без доступа к БД.
+FIX: Добавлены поля show_create (0|1) и create_url (string) для простого рендера кнопки.
+     Исключена необходимость сложных условий в Blade.
 */
 
 namespace App\Http\ViewModels\Forum;
@@ -15,95 +16,114 @@ final class HubPageVM
     private array $data = [];
 
     /**
-     * Factory from controller/service arrays.
+     * Сконструировать VM из массива контроллера.
      *
-     * @param array<string,mixed> $in
-     * @return self
+     * Контракт: ожидает tag, topics[], pager{page,per_page,pages,total},
+     * links{self,sort_*,prev,next,create|null}, abilities.can_create.
+     *
+     * @param array<string,mixed> $data Контроллер→VM данные без объектов.
+     *
+     * Preconditions:
+     * - $data['tag']['slug'] непустой string.
+     * - $data['topics'] — array<array>.
+     * - $data['pager'] содержит page|pages|total|per_page.
+     *
+     * Side effects: отсутствуют.
+     *
+     * @return static
+     *
+     * @throws \InvalidArgumentException При отсутствии обязательных полей.
+     * @example См. контроллер ShowHubAction::__invoke().
      */
-    public static function fromArray(array $in): self
+    public static function fromArray(array $data): static
     {
-        $vm = new self();
-
-        $tag   = (array)($in['tag'] ?? []);
-        $slug  = (string)($tag['slug'] ?? '');
-        $title = (string)($tag['title'] ?? $slug);
-        $sort  = (string)($in['sort']['key'] ?? 'last');
-        if (!in_array($sort, ['last', 'new', 'posts'], true)) {
-            $sort = 'last';
+        $tag   = (array) ($data['tag'] ?? []);
+        $slug  = (string) ($tag['slug'] ?? '');
+        $title = (string) ($tag['title'] ?? $slug);
+        if ($slug === '') {
+            throw new \InvalidArgumentException('HubPageVM requires tag.slug.');
         }
 
-        $pager = (array)($in['pager'] ?? []);
-        $page  = (int)($pager['page'] ?? 1);
-        $pages = (int)($pager['pages'] ?? 1);
-        $page  = $page > 0 ? $page : 1;
-        $pages = $pages > 0 ? $pages : 1;
-
-        $baseUrl = '/forum/f/' . $slug . '/';
-
-        // Normalize topics: URL and 'when'
-        $now    = time();
-        $topics = [];
-        foreach ((array)($in['topics'] ?? []) as $t) {
-            $a         = (array)$t;
-            $slugOrId  = (string)($a['slug'] ?? '');
-            if ($slugOrId === '') {
-                $slugOrId = (string)($a['id'] ?? '');
-            }
-            $url = (string)($a['url'] ?? ('/forum/t/' . $slugOrId . '/'));
-
-            $ts   = isset($a['last_post_at']) ? (int)$a['last_post_at'] : null;
-            $when = (string)($a['when'] ?? TimeFormatter::humanize($ts, $now));
-
-            $topics[] = [
-                'id'          => (string)($a['id'] ?? ''),
-                'slug'        => (string)($a['slug'] ?? ''),
-                'title'       => (string)($a['title'] ?? ('Тема #' . $slugOrId)),
-                'posts_count' => (int)($a['posts_count'] ?? 0),
-                'url'         => $url,
-                'when'        => $when,
-                'pinned'      => (int)($a['pinned'] ?? 0),
-            ];
+        // Topics: приведение к скалярам.
+        $topicsIn = \is_array($data['topics'] ?? null) ? (array) $data['topics'] : [];
+        $topics   = [];
+        $now      = time();
+        foreach ($topicsIn as $t) {
+            $a = (array) $t;
+            $a['id']     = (string) ($a['id'] ?? '');
+            $a['title']  = (string) ($a['title'] ?? '');
+            $a['slug']   = (string) ($a['slug'] ?? '');
+            $a['url']    = (string) ($a['url'] ?? ($a['slug'] ? '/forum/t/'.$a['slug'].'/' : ''));
+            $ts          = (int) ($a['when'] ?? $a['created_at'] ?? $now);
+            $a['when']   = TimeFormatter::humanize($ts, $now);
+            $a['author'] = (string) ($a['author'] ?? ($a['user_name'] ?? ''));
+            $a['posts']  = (int) ($a['posts'] ?? ($a['posts_count'] ?? 0));
+            $topics[]    = $a;
         }
 
-        $hasTopics = !empty($topics);
-        $hasPages  = $pages > 1;
-        $hasPrev   = $page > 1;
-        $hasNext   = $page < $pages;
+        // Pager.
+        $pagerIn  = (array) ($data['pager'] ?? []);
+        $page     = max(1, (int) ($pagerIn['page'] ?? 1));
+        $perPage  = max(1, (int) ($pagerIn['per_page'] ?? 20));
+        $pages    = max(1, (int) ($pagerIn['pages'] ?? 1));
+        $total    = max(0, (int) ($pagerIn['total'] ?? 0));
+        $hasPrev  = $page > 1 ? 1 : 0;
+        $hasNext  = $page < $pages ? 1 : 0;
+        $hasPages = $pages > 1 ? 1 : 0;
 
+        // Links и abilities.
+        $linksIn = (array) ($data['links'] ?? []);
+        $links   = [
+            'self'       => (string) ($linksIn['self'] ?? '/forum/f/'.$slug.'/'),
+            'sort_last'  => (string) ($linksIn['sort_last'] ?? ''),
+            'sort_new'   => (string) ($linksIn['sort_new'] ?? ''),
+            'sort_posts' => (string) ($linksIn['sort_posts'] ?? ''),
+            'prev'       => (string) ($linksIn['prev'] ?? ''),
+            'next'       => (string) ($linksIn['next'] ?? ''),
+            'create'     => $linksIn['create'] ?? null,
+        ];
+
+        $abilitiesIn = (array) ($data['abilities'] ?? []);
+        $canCreate   = (bool) ($abilitiesIn['can_create'] ?? ($data['can_create'] ?? false));
+
+        // Плоские примитивы для Blade.
+        $createRaw   = \is_string($links['create']) ? (string) $links['create'] : '';
+        $createUrl   = ($canCreate && $createRaw !== '') ? $createRaw : '';
+        $showCreate  = $createUrl !== '' ? 1 : 0;
+
+        $vm = new static();
         $vm->data = [
-            'meta'       => [
-                'title'            => 'Хаб: ' . $title,
-                'has_breadcrumbs'  => 1,
-                'breadcrumbs'      => [
-                    ['label' => 'Форум', 'url' => '/forum', 'has_url' => 1, 'sep_before' => 0],
-                    ['label' => $title,  'url' => '',       'has_url' => 0, 'sep_before' => 1],
+            'meta' => [
+                'title'           => 'Хаб: '.$title,
+                'has_breadcrumbs' => 1,
+                'breadcrumbs'     => [
+                    ['label' => 'Форум', 'url' => '/forum/', 'has_url' => 1, 'sep_before' => 0],
+                    ['label' => $title, 'url' => $links['self'], 'has_url' => 1, 'sep_before' => 1],
                 ],
             ],
-            'tag'        => ['slug' => $slug, 'title' => $title],
-            'has_topics' => $hasTopics ? 1 : 0,
-            'topics'     => $topics,
-            'links'      => [
-                'sort_last'  => $baseUrl . '?sort=last',
-                'sort_new'   => $baseUrl . '?sort=new',
-                'sort_posts' => $baseUrl . '?sort=posts',
-                'prev'       => $hasPrev ? $baseUrl . '?sort=' . $sort . '&page=' . ($page - 1) : '',
-                'next'       => $hasNext ? $baseUrl . '?sort=' . $sort . '&page=' . ($page + 1) : '',
-            ],
-            'pager'      => [
-                'has_pages' => $hasPages ? 1 : 0,
-                'has_prev'  => $hasPrev ? 1 : 0,
-                'has_next'  => $hasNext ? 1 : 0,
+            'tag'         => ['slug' => $slug, 'title' => $title],
+            'topics'      => $topics,
+            'links'       => $links,
+            'abilities'   => ['can_create' => $canCreate ? 1 : 0],
+            'pager'       => [
                 'page'      => $page,
+                'per_page'  => $perPage,
                 'pages'     => $pages,
+                'total'     => $total,
+                'has_prev'  => $hasPrev,
+                'has_next'  => $hasNext,
+                'has_pages' => $hasPages,
             ],
-            'sort'       => ['key' => $sort],
+            // Плоские ключи для строгого Blade:
+            'show_create' => $showCreate,
+            'create_url'  => $createUrl,
         ];
 
         return $vm;
     }
 
     /**
-     * Export data for Blade.
+     * Экспорт массива для Blade.
      *
      * @return array<string,mixed>
      */

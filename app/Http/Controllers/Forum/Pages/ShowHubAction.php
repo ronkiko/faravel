@@ -1,9 +1,9 @@
-<?php // v0.4.141
+<?php // v0.4.142
 /* app/Http/Controllers/Forum/Pages/ShowHubAction.php
 Purpose: GET /forum/f/{tag_slug} — страница хаба/тега: тонкий контроллер, дергает
          HubQueryService, собирает HubPageVM и отдаёт Blade-представление.
-FIX: Добавлен метод show() для совместимости с маршрутом [Class,'show']; подтверждена
-     установка layout_overrides['nav_active']='forum'. Расширены PHPDoc.
+FIX: Добавлены links.* и abilities.can_create для HubPageVM; импорт Auth; подготовка
+     URL для сортировки/пагинации/создания; v0.4.142.
 */
 
 declare(strict_types=1);
@@ -15,6 +15,7 @@ use Faravel\Http\Response;
 use App\Services\Forum\HubQueryService;
 use App\Http\ViewModels\Forum\HubPageVM;
 use App\Http\ViewModels\Layout\FlashVM;
+use Faravel\Support\Facades\Auth;
 
 final class ShowHubAction
 {
@@ -47,9 +48,9 @@ final class ShowHubAction
     }
 
     /**
-     * Показ страницы хаба/тега.
+     * Показ страницы хаба.
      *
-     * Controller → Service → VM → View. Контроллер только координирует слои.
+     * Summary: Controller → Service → VM → View. Контроллер только координирует слои.
      *
      * @param Request $request  Текущий HTTP-запрос (локаль/сессия/пользователь).
      * @param string  $tag_slug Слаг тега; непустой.
@@ -78,13 +79,29 @@ final class ShowHubAction
         /** @var array{items:array<int,array<string,mixed>>,pager:array<string,int>} $list */
         $list = $svc->topicsForTag((string) $tag['id'], $page, 20, $sort);
 
+        // Готовим базовые ссылки и право создания
+        $slug       = (string) $tag['slug'];
+        $baseUrl    = '/forum/f/' . $slug . '/';
+        $canCreate  = Auth::check();
+
         $vm = HubPageVM::fromArray([
             'tag'    => [
                 'slug'  => (string) $tag['slug'],
                 'title' => (string) ($tag['title'] ?? $tag['slug']),
             ],
             'topics' => $list['items'],
+            'links'  => [
+                'self'        => $baseUrl,
+                'sort_last'   => $baseUrl . '?sort=last',
+                'sort_new'    => $baseUrl . '?sort=new',
+                'sort_posts'  => $baseUrl . '?sort=posts',
+                'prev'        => $baseUrl . '?sort=' . $sort . '&page=' . \max(1, $page - 1),
+                'next'        => $baseUrl . '?sort=' . $sort . '&page=' . ($page + 1),
+                'create'      => $canCreate ? ($baseUrl . 'create') : null,
+            ],
+            'abilities' => ['can_create' => $canCreate],
             'pager'  => $list['pager'],
+            'can_create' => $canCreate,
             'sort'   => ['key' => $sort],
         ]);
 

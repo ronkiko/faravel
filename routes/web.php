@@ -1,11 +1,9 @@
-<?php // v0.4.120
+<?php // v0.4.122
 /* routes/web.php
 Purpose: Декларативные маршруты приложения Faravel: форум (категории/хабы/темы/посты),
          а также auth, админка и мод-панель. Тонкие контроллеры Pages/*.
-FIX: + Админ-маршруты abilities/perks добавлены; корректная навигация. FIX: Добавлены back-compat
-     алиасы для /forum/h/{tag_slug}/ (show/create GET/POST), указывающие на те же экшены, что и
-     канонический /forum/f/{tag_slug}/. Это устраняет 404 для уже отрендерённых ссылок. Главная
-     (/) возвращает 200 OK.
+FIX: Маршруты /forum/(f|h)/{tag_slug}/create указывают на ['__invoke'] вместо bare class,
+     чтобы удовлетворить Router и убрать "Invalid route action type".
 */
 
 use Faravel\Routing\Router;
@@ -81,17 +79,20 @@ Router::get('/forum/f/{tag_slug}', [ShowHubAction::class, 'show'])
 Router::get('/forum/h/{tag_slug}', [ShowHubAction::class, 'show']);
 Router::get('/forum/h/{tag_slug}/', [ShowHubAction::class, 'show']);
 
-Router::get('/forum/f/{tag_slug}/create', [CreateTopicFormAction::class, 'show'])
+/* ===================== Forum: Topic creation ===================== */
+
+Router::get('/forum/f/{tag_slug}/create', [CreateTopicFormAction::class, '__invoke'])
     ->middleware([AuthMiddleware::class])
     ->name('forum.topic.create.form');
 
-Router::post('/forum/f/{tag_slug}/create', [CreateTopicAction::class, 'handle'])
+Router::post('/forum/f/{tag_slug}/create', [CreateTopicAction::class, '__invoke'])
     ->middleware([AuthMiddleware::class, Csrf::class])
     ->name('forum.topic.create');
 
-Router::get('/forum/h/{tag_slug}/create', [CreateTopicFormAction::class, 'show'])
+Router::get('/forum/h/{tag_slug}/create', [CreateTopicFormAction::class, '__invoke'])
     ->middleware([AuthMiddleware::class]);
-Router::post('/forum/h/{tag_slug}/create', [CreateTopicAction::class, 'handle'])
+
+Router::post('/forum/h/{tag_slug}/create', [CreateTopicAction::class, '__invoke'])
     ->middleware([AuthMiddleware::class, Csrf::class]);
 
 /* ===================== Forum: Topics ===================== */
@@ -143,10 +144,7 @@ Router::post('/forum/p/{id}/unreact', [RemoveReactionAction::class, 'handle'])
     ->middleware([AuthMiddleware::class, Csrf::class])
     ->name('forum.post.unreact');
 
-/* ===================== Admin Panel =====================
- * Admin routes are protected by AuthMiddleware + AdminOnly.
- * Admins (role_id ≥ 6) can manage settings, categories and forums.
- */
+/* ===================== Admin Panel ===================== */
 
 Router::get('/admin', [AdminController::class, 'index'])
     ->middleware([AuthMiddleware::class, AdminOnly::class])
@@ -262,12 +260,8 @@ Router::get('/mod', [ModController::class, 'index'])
     ->middleware([AuthMiddleware::class, ModOnly::class])
     ->name('mod.index');
 
-/* ===================== Home =====================
- * Root returns 200 OK and renders 'home' view (no hard redirect).
- * This keeps curl checks happy and avoids premature pipeline exit.
- */
+/* ===================== Home ===================== */
+
 Router::get('/', function ($request) {
-    // NOTE: Since v0.4.114, Router::executeAction unpacks args correctly.
-    // Home route has no params; accept Request only for consistency.
     return response()->view('home');
 })->name('home');

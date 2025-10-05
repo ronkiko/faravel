@@ -1,10 +1,9 @@
-<?php // v0.4.123
+<?php // v0.4.124
 /* app/Http/ViewModels/Layout/LayoutVM.php
 Purpose: ViewModel уровня лэйаута (site/nav/title/locale) для строгих Blade-шаблонов.
          Жёстко нормализует ключи, включая nav.show.{admin,mod}.
-FIX: Добавлен верхнеуровневый layout.csrf для форм страницы (logout и прочих),
-     чтобы Blade оставался «тупым» и не вызывал хелперы. Контракт расширен и
-     согласован с LayoutService. DEPRECATED brand.* не используется.
+FIX: Документировано, что nav.active может устанавливаться автоматически на
+     основе первой буквенной секции пути (см. LayoutService::build()).
 */
 namespace App\Http\ViewModels\Layout;
 
@@ -14,7 +13,7 @@ namespace App\Http\ViewModels\Layout;
 final class LayoutVM
 {
     /** @var string UI locale */
-    public string $locale = 'ru';
+    public string $locale = 'en';
 
     /** @var string Page <title> */
     public string $title = 'Faravel';
@@ -39,6 +38,7 @@ final class LayoutVM
 
     /**
      * Navigation state (mandatory `active`).
+     * Может быть задан контроллером или автоматически сервисом лэйаута.
      *
      * @var array{
      *   active:string,
@@ -56,12 +56,6 @@ final class LayoutVM
 
     /**
      * Создать VM из массива, собранного сервисом.
-     *
-     * Preconditions:
-     * - 'title' is string;
-     * - 'csrf' is non-empty string (для форм);
-     * - 'site' содержит: site.title, site.logo.url, site.home.url (strings);
-     * - 'nav' содержит: 'active', 'links', 'show', 'auth'.
      *
      * @param array<string,mixed> $data
      * @return static
@@ -85,7 +79,7 @@ final class LayoutVM
         }
         $self->title = $data['title'];
 
-        // csrf (required — пустой токен нам не подходит)
+        // csrf (required)
         if (!isset($data['csrf']) || !is_string($data['csrf']) || $data['csrf'] === '') {
             throw new \InvalidArgumentException('layout.csrf must be non-empty string');
         }
@@ -131,7 +125,7 @@ final class LayoutVM
             throw new \InvalidArgumentException('layout.nav.auth must be array');
         }
 
-        // normalize links to <string,string>
+        // normalize links
         $links = [];
         foreach ($nav['links'] as $k => $v) {
             if (!is_string($k) || !is_string($v)) {

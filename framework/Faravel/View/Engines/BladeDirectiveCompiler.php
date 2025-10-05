@@ -1,4 +1,10 @@
-<?php // v0.4.5
+<?php // v0.4.10
+/* framework/Faravel/View/Engines/BladeDirectiveCompiler.php
+Purpose: Строгий компилятор Blade-директив (@if/@foreach/и т.п.) в безопасный PHP.
+FIX: Добавлена прямая компиляция @if(isset(EXPR)) / @elseif(isset(EXPR))
+     (как ранее для @if(!empty(EXPR))). Делается до базовых @if/@elseif.
+*/
+
 namespace Faravel\View\Engines;
 
 final class BladeDirectiveCompiler
@@ -9,52 +15,87 @@ final class BladeDirectiveCompiler
         'include','each',
     ];
 
+    /**
+     * Компиляция Blade-директив в безопасный PHP.
+     *
+     * @param string              $code    Исходный Blade.
+     * @param array<string,mixed> $options Опции: disallowRawEcho, echoesOnlyVars, directives.
+     * @return string                      PHP-код.
+     */
     public static function compile(string $code, array $options = []): string
     {
         $disallowRaw = (bool)($options['disallowRawEcho'] ?? false);
         $onlyVars    = (bool)($options['echoesOnlyVars']  ?? false);
         $directives  = (array)($options['directives']     ?? []);
 
+        // Комментарии
         $code = preg_replace('~\{\{\-\-.*?\-\-\}\}~s', '', $code) ?? $code;
         $code = preg_replace('~<!--.*?-->~s',          '', $code) ?? $code;
 
+        // Кастомные директивы
         if (!empty($directives)) {
             $code = self::compileCustomDirectives($code, $directives);
         }
 
+        // Сырые эхо
         if ($disallowRaw && preg_match('~\{!!~', $code) === 1) {
             throw new \RuntimeException('Raw echo {!! !!} is disabled in strict mode.');
         }
+        $code = $disallowRaw
+            ? (preg_replace('/\{!!\s*.*?\s*!!\}/s', '<?php /* raw echo disabled */ ?>', $code) ?? $code)
+            : self::compileRawEchos($code);
 
-        if (!$disallowRaw) {
-            $code = self::compileRawEchos($code);
-        } else {
-            $code = preg_replace('/\{!!\s*.*?\s*!!\}/s', '<?php /* raw echo disabled */ ?>', $code) ?? $code;
-        }
-
+        // Экранированные эхо
         $code = self::compileEscapedEchos($code, $onlyVars);
 
+        // ========= Условные директивы и циклы =========
+        // Рекурсивная группа для любых (...) со вложенностью.
         $PAREN = '\((?>[^()]+|(?R))*\)';
 
-        $code = preg_replace('/@if\s*(' . $PAREN . ')/',      '<?php if $1 { ?>', $code) ?? $code;
-        $code = preg_replace('/@elseif\s*(' . $PAREN . ')/',  '<?php } elseif $1 { ?>', $code) ?? $code;
-        $code = preg_replace('/@else\b/',                     '<?php } else { ?>', $code) ?? $code;
-        $code = preg_replace('/@endif\b/',                    '<?php } ?>', $code) ?? $code;
+        // 1) Спец-формы до базовых: !empty и isset
+        $code = preg_replace(
+            '/@if\s*\(\s*!\s*empty\s*(' . $PAREN . ')\s*\)/',
+            '<?php if (!empty $1) { ?>',
+            $code
+        ) ?? $code;
+        $code = preg_replace(
+            '/@elseif\s*\(\s*!\s*empty\s*(' . $PAREN . ')\s*\)/',
+            '<?php } elseif (!empty $1) { ?>',
+            $code
+        ) ?? $code;
 
-        $code = preg_replace('/@foreach\s*(' . $PAREN . ')/', '<?php foreach $1 { ?>', $code) ?? $code;
-        $code = preg_replace('/@endforeach\b/',               '<?php } ?>', $code) ?? $code;
+        $code = preg_replace(
+            '/@if\s*\(\s*isset\s*(' . $PAREN . ')\s*\)/',
+            '<?php if (isset $1) { ?>',
+            $code
+        ) ?? $code;
+        $code = preg_replace(
+            '/@elseif\s*\(\s*isset\s*(' . $PAREN . ')\s*\)/',
+            '<?php } elseif (isset $1) { ?>',
+            $code
+        ) ?? $code;
 
-        $code = preg_replace('/@for\s*(' . $PAREN . ')/',     '<?php for $1 { ?>', $code) ?? $code;
-        $code = preg_replace('/@endfor\b/',                   '<?php } ?>', $code) ?? $code;
+        // 2) Базовые if/elseif/else/endif
+        $code = preg_replace('/@if\s*(' . $PAREN . ')/',     '<?php if $1 { ?>',       $code) ?? $code;
+        $code = preg_replace('/@elseif\s*(' . $PAREN . ')/', '<?php } elseif $1 { ?>', $code) ?? $code;
+        $code = preg_replace('/@else\b/',                    '<?php } else { ?>',      $code) ?? $code;
+        $code = preg_replace('/@endif\b/',                   '<?php } ?>',             $code) ?? $code;
 
-        $code = preg_replace('/@while\s*(' . $PAREN . ')/',   '<?php while $1 { ?>', $code) ?? $code;
-        $code = preg_replace('/@endwhile\b/',                 '<?php } ?>', $code) ?? $code;
+        // 3) Циклы
+        $code = preg_replace('/@foreach\s*(' . $PAREN . ')/','<?php foreach $1 { ?>',  $code) ?? $code;
+        $code = preg_replace('/@endforeach\b/',              '<?php } ?>',             $code) ?? $code;
+        $code = preg_replace('/@for\s*(' . $PAREN . ')/',    '<?php for $1 { ?>',      $code) ?? $code;
+        $code = preg_replace('/@endfor\b/',                  '<?php } ?>',             $code) ?? $code;
+        $code = preg_replace('/@while\s*(' . $PAREN . ')/',  '<?php while $1 { ?>',    $code) ?? $code;
+        $code = preg_replace('/@endwhile\b/',                '<?php } ?>',             $code) ?? $code;
 
+        // 4) Запрет @php/@endphp
         $code = preg_replace('/@php\s*(.*?)\s*@endphp/s', '<?php /* @php forbidden */ ?>', $code) ?? $code;
 
         return $code;
     }
 
+    /** @internal */
     private static function compileCustomDirectives(string $code, array $directives): string
     {
         return preg_replace_callback(
@@ -81,6 +122,7 @@ final class BladeDirectiveCompiler
         ) ?? $code;
     }
 
+    /** @internal */
     private static function compileRawEchos(string $code): string
     {
         return preg_replace_callback('~\{!!\s*(.*?)\s*!!\}~s', static function ($m) {
@@ -88,6 +130,7 @@ final class BladeDirectiveCompiler
         }, $code) ?? $code;
     }
 
+    /** @internal */
     private static function compileEscapedEchos(string $code, bool $onlyVars): string
     {
         return preg_replace_callback('~\{\{\s*(.*?)\s*\}\}~s', static function ($m) use ($onlyVars) {

@@ -1,10 +1,10 @@
-<?php // v0.4.7
+<?php // v0.4.8
 /* framework/Faravel/Routing/Router.php
 Назначение: регистратор и диспетчер маршрутов Faravel; строит стек route-middleware
 и выполняет action контроллера.
-FIX: Добавлено правило алиаса методов форм: если в [Controller,'loginForm'|'registerForm']
-     метод не найден, пробуем 'showLoginForm'/'showRegisterForm'. Логируем подмену.
-     Сохранены: автосборка контроллеров, распаковка параметров, фолбэк на __invoke().
+FIX: Добавлен лог ROUTE.RESOLVE перед созданием контроллера через контейнер и
+     логирование исключений при вызове метода экшена (ROUTE.ACTION). При неудаче
+     make() — лог и фолбэк на buildViaReflection().
 */
 
 namespace Faravel\Routing;
@@ -266,10 +266,14 @@ class Router
                 throw new Exception("Controller class '{$controllerClass}' not found.");
             }
 
+            // Новый явный лог перед резолвом контроллера.
+            Logger::log('ROUTE.RESOLVE', $controllerClass . '@' . $methodName);
+
             // 1) Контроллер через контейнер, при неудаче — через рефлексию.
             try {
                 $controller = \container()->make($controllerClass);
             } catch (\Throwable $e) {
+                Logger::exception('ROUTE.RESOLVE', $e, ['class' => $controllerClass]);
                 $controller = self::buildViaReflection($controllerClass);
             }
 
@@ -312,12 +316,27 @@ class Router
             }
 
             Logger::log('ACTION.CONTROLLER', $controllerClass . '@' . $callableMethod);
-            /** @var mixed $response */
-            $response = $controller->{$callableMethod}($request, ...$args);
+
+            try {
+                /** @var mixed $response */
+                $response = $controller->{$callableMethod}($request, ...$args);
+            } catch (\Throwable $e) {
+                Logger::exception(
+                    'ROUTE.ACTION',
+                    $e,
+                    ['class' => $controllerClass, 'method' => $callableMethod]
+                );
+                throw $e;
+            }
         } elseif (is_callable($action)) {
             Logger::log('ACTION.CLOSURE', 'Invoking route closure');
-            /** @var mixed $response */
-            $response = $action($request, ...$args);
+            try {
+                /** @var mixed $response */
+                $response = $action($request, ...$args);
+            } catch (\Throwable $e) {
+                Logger::exception('ROUTE.ACTION', $e, ['closure' => true]);
+                throw $e;
+            }
         } else {
             throw new Exception('Invalid route action type.');
         }

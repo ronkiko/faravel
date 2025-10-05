@@ -1,8 +1,9 @@
-<?php // v0.2.0
+<?php // v0.4.1
 /* app/Http/ViewModels/Layout/FlashVM.php
-Назначение: VM флеш-сообщений под строгий Blade.
-FIX: Вместо массива — полноценная VM: fromArray()/fromSession() + toArray().
-     Нормализация в массивы строк; центр. сборка из сессии.
+Purpose: VM флеш-сообщений под строгий Blade.
+FIX: fromSession() теперь читает и flash-значения через Session::old('success'|'error'),
+     а затем объединяет их с постоянными ключами success|error и *_list. Это устраняет
+     пропажу плашек после редиректов из троттлинга и других действий.
 */
 namespace App\Http\ViewModels\Layout;
 
@@ -16,34 +17,47 @@ final class FlashVM
     public array $error   = [];
 
     /**
-     * @param array{success?:string|string[], error?:string|string[]} $src
+     * Создать VM из массива.
+     *
+     * @param array{success?:mixed,error?:mixed} $data
+     * @return self
      */
-    public static function fromArray(array $src): self
+    public static function fromArray(array $data): self
     {
         $self = new self();
-        $self->success = self::norm($src['success'] ?? []);
-        $self->error   = self::norm($src['error']   ?? []);
+        $self->success = self::norm($data['success'] ?? []);
+        $self->error   = self::norm($data['error'] ?? []);
         return $self;
     }
 
     /**
-     * Сборка из сессии (канонично для контроллеров).
+     * Считать флеши из сессии.
+     *
+     * Правила:
+     * - В первую очередь берём flash-ключи через old('success'|'error').
+     * - Затем добавляем постоянные success|error или success_list|error_list.
+     * - Пустые строки отбрасываются, дубликаты убираются, порядок сохраняется.
+     *
+     * @param Session $s
+     * @return self
      */
     public static function fromSession(Session $s): self
     {
-        $succ = $s->get('success_list');
-        if (!$succ) {
-            $v = $s->get('success');
-            $succ = $v ? [(string)$v] : [];
-        }
+        // flash (текущий запрос)
+        $succFlash = self::norm($s->old('success', []));
+        $errFlash  = self::norm($s->old('error', []));
 
-        $err = $s->get('error_list');
-        if (!$err) {
-            $v = $s->get('error');
-            $err = $v ? [(string)$v] : [];
-        }
+        // persistent fallbacks
+        $succList  = self::norm($s->get('success_list', []));
+        $errList   = self::norm($s->get('error_list', []));
+        $succOne   = self::norm($s->get('success', []));
+        $errOne    = self::norm($s->get('error', []));
 
-        return self::fromArray(['success' => $succ, 'error' => $err]);
+        // merge with de-duplication
+        $success = self::unique(array_merge($succFlash, $succList, $succOne));
+        $error   = self::unique(array_merge($errFlash,  $errList,  $errOne));
+
+        return self::fromArray(['success' => $success, 'error' => $error]);
     }
 
     /** @return array{success:string[], error:string[]} */
@@ -66,5 +80,19 @@ final class FlashVM
             return $out;
         }
         return [];
+    }
+
+    /** @param array<int,string> $arr @return array<int,string> */
+    private static function unique(array $arr): array
+    {
+        $seen = [];
+        $out  = [];
+        foreach ($arr as $s) {
+            if (!isset($seen[$s])) {
+                $seen[$s] = true;
+                $out[] = $s;
+            }
+        }
+        return $out;
     }
 }

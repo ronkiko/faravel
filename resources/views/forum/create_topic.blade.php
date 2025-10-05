@@ -1,5 +1,7 @@
-<!-- v0.4.121 -->
+<!-- v0.4.122 -->
 {{-- resources/views/forum/create_topic.blade.php
+Назначение: форма создания темы. Строгий Blade: только простые проверки и вывод.
+FIX: Удалён блок "Категория", шаблон не зависит от vm.category.*.
 --}}
 @extends('layouts.theme')
 
@@ -22,7 +24,6 @@
 
   <header class="wrap" style="margin-top:.25rem">
     <h1 style="margin:0">Новая тема в «{{ $vm['tag']['title'] }}»</h1>
-    <div class="muted">Категория: <span class="pill">{{ $vm['category']['title'] }}</span></div>
   </header>
 
   @if($vm['flash']['has_error'])
@@ -35,9 +36,9 @@
   <form class="wrap form" method="POST" action="{{ $vm['form']['action'] }}">
     <input type="hidden" name="_token" value="{{ $layout['csrf'] }}">
     <label class="f-label" for="title">Заголовок</label>
-    <input class="f-input" id="title" name="title" type="text" value="{{ $vm['draft']['title'] }}">
+    <input class="f-input" id="title" name="title" type="text" value="{{ $vm['draft']['title'] }}" tabindex="1">
     <label class="f-label" for="content">Текст</label>
-    <textarea class="f-input f-input--area" id="content" name="content" placeholder="Текст сообщения...">{{ $vm['draft']['content'] }}</textarea>
+    <textarea class="f-input f-input--area" id="content" name="content" placeholder="Текст сообщения..." tabindex="2">{{ $vm['draft']['content'] }}</textarea>
     <div class="f-actions">
       <button class="f-btn f-btn--primary" type="submit">Создать тему</button>
       <a class="f-btn" href="{{ $vm['links']['hub'] }}">Отмена</a>

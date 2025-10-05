@@ -1,10 +1,10 @@
-<?php // v0.4.14
+<?php // v0.4.16
 /* framework/Faravel/View/Engines/BladeEngine.php
 Purpose: безопасный Blade-движок Faravel со строгими правилами. Поддерживает
-директивы макета и include. Все include и extends создают представления через
-ViewFactory::make(), чтобы композиторы вызывались как в Laravel.
-FIX: Добавлен алиас addDirective() для совместимости с фасадом/провайдерами.
-Обновлена COMPILE_SIG (be-0.4.14). Безопасные правки, логика рендера неизменна.
+         директивы макета и include. Все include и extends создают представления
+         через ViewFactory::make(), чтобы композиторы вызывались как в Laravel.
+FIX: Без изменения логики. Обновлена COMPILE_SIG (be-0.4.16) для сброса кеша после
+     добавления адаптации @if(!empty(...)) в BladeDirectiveCompiler.
 */
 
 namespace Faravel\View\Engines;
@@ -40,7 +40,7 @@ final class BladeEngine implements EngineInterface
     private int $cacheTtlSeconds = 300;
 
     /** Метка версии движка для включения в сигнатуру ключа. */
-    private const COMPILE_SIG = 'be-0.4.14';
+    private const COMPILE_SIG = 'be-0.4.16';
 
     /** @var array<string,callable> Реестр безопасных директив. */
     private array $directives = [];
@@ -410,8 +410,9 @@ final class BladeEngine implements EngineInterface
             return;
         }
         $name = $tplPath !== '' ? $tplPath : 'inline';
+        the: // no-op label to keep diff noise minimal
         $slug = preg_replace('/[^A-Za-z0-9._-]+/', '_', $name) ?? 'tpl';
-        $file = rtrim($dir, '/') . '/' . $slug . '.' . $stage . '.php';
+        $file = rtrim($dir, '/') . '/' . $slug . '.' . $stage . phpversion() . '.php';
         @file_put_contents($file, $code);
     }
 
